@@ -1,5 +1,7 @@
 # Pocket-Flow-Meter
 
+TODO: Fill out this small description part
+
 ## Features
 - [ ] Communicate with Sensirion flow sensor
     - [ ] Work with different/any sensor (dynamically get the sensor ID and configuration stuff)
@@ -13,6 +15,16 @@
     - [ ] Some kind of webinterface to interact more deeply with the device ?
     - [ ] over Wifi ?
     - [ ] over the USB cable ?
+- [ ] Make this a nice physical device
+    - [ ] nice 3d printed housing
+    - [ ] Easyl to assemble
+
+## Technical Roadmap
+- [ ] Compile Rust to the specific uC
+- [ ] From Rust, use/control the display
+- [ ] Communicate with the sensirion sensor over SPI
+- [ ] Test communication through the USB cable ?
+- [ ] Test communication through WiFi
 
 ## Doc links
 ### Lilygo microcontroller

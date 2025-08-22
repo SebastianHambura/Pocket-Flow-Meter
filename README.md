@@ -20,7 +20,7 @@ TODO: Fill out this small description part
     - [ ] Easyl to assemble
 
 ## Technical Roadmap
-- [ ] Compile Rust to the specific uC
+- [x] Compile Rust to the specific uC
 - [ ] From Rust, use/control the display
 - [ ] Communicate with the sensirion sensor over SPI
 - [ ] Test communication through the USB cable ?

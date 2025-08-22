@@ -26,6 +26,8 @@ TODO: Fill out this small description part
 - [ ] Test communication through the USB cable ?
 - [ ] Test communication through WiFi
 
+See [the technical notes](./docs/technical_notes.md) for more information about this topic.
+
 ## Doc links
 ### Lilygo microcontroller
 - https://github.com/Xinyuan-LilyGO/T-Display-S3

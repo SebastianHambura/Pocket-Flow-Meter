@@ -3,6 +3,7 @@ edition      = "2021"
 name         = "flow-meter"
 rust-version = "1.86"
 version      = "0.1.0"
+default-run = "flow-meter"
 
 [[bin]]
 name = "flow-meter"

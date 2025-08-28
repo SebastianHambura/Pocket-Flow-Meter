@@ -6,18 +6,23 @@
     holding buffers for the duration of a data transfer."
 )]
 
+use embedded_graphics::mono_font::ascii;
 use embedded_graphics::pixelcolor::Rgb565;
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{OutputConfig, OutputPin, Pin};
+use esp_hal::gpio::{InputConfig, OutputConfig, OutputPin, Pin};
 use esp_hal::time::{Duration, Instant};
 use esp_hal::{delay::Delay, main};
+use kolibri_embedded_gui::button::Button;
+use kolibri_embedded_gui::label::Label;
+use kolibri_embedded_gui::smartstate::SmartstateProvider;
+use kolibri_embedded_gui::style::medsize_rgb565_style;
+use kolibri_embedded_gui::toggle_switch::ToggleSwitch;
+use kolibri_embedded_gui::ui::Ui;
 use log::info;
 
-use embedded_graphics::{pixelcolor::Rgb666, prelude::*};
-use mipidsi::interface::{Generic8BitBus, OutputBus, ParallelInterface, SpiInterface};
-use mipidsi::models::ST7789;
-use mipidsi::options::ColorInversion;
-use mipidsi::{Builder, Display}; // Provides the required color type
+use embedded_graphics::{prelude::*};
+
+mod lilygo_hal;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -28,70 +33,13 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-fn lcd_display_setup(
-    peripherals: esp_hal::peripherals::Peripherals,
-) -> mipidsi::Display<
-    mipidsi::interface::ParallelInterface<
-        mipidsi::interface::Generic8BitBus<
-            esp_hal::gpio::Output<'static>,
-            esp_hal::gpio::Output<'static>,
-            esp_hal::gpio::Output<'static>,
-            esp_hal::gpio::Output<'static>,
-            esp_hal::gpio::Output<'static>,
-            esp_hal::gpio::Output<'static>,
-            esp_hal::gpio::Output<'static>,
-            esp_hal::gpio::Output<'static>,
-        >,
-        esp_hal::gpio::Output<'static>,
-        esp_hal::gpio::Output<'static>,
-    >,
-    mipidsi::models::ST7789,
-    esp_hal::gpio::Output<'static>,
-> {
-    let config = OutputConfig::default();
-
-    // Pinout: Check T-DISPLAY-S3 pinout documentation
-    let lcd_d0 = esp_hal::gpio::Output::new(peripherals.GPIO39, esp_hal::gpio::Level::Low, config);
-    let lcd_d1 = esp_hal::gpio::Output::new(peripherals.GPIO40, esp_hal::gpio::Level::Low, config);
-    let lcd_d2 = esp_hal::gpio::Output::new(peripherals.GPIO41, esp_hal::gpio::Level::Low, config);
-    let lcd_d3 = esp_hal::gpio::Output::new(peripherals.GPIO42, esp_hal::gpio::Level::Low, config);
-    let lcd_d4 = esp_hal::gpio::Output::new(peripherals.GPIO45, esp_hal::gpio::Level::Low, config);
-    let lcd_d5 = esp_hal::gpio::Output::new(peripherals.GPIO46, esp_hal::gpio::Level::Low, config);
-    let lcd_d6 = esp_hal::gpio::Output::new(peripherals.GPIO47, esp_hal::gpio::Level::Low, config);
-    let lcd_d7 = esp_hal::gpio::Output::new(peripherals.GPIO48, esp_hal::gpio::Level::Low, config);
-
-    let dc = esp_hal::gpio::Output::new(peripherals.GPIO7, esp_hal::gpio::Level::Low, config);
-    let wr = esp_hal::gpio::Output::new(peripherals.GPIO8, esp_hal::gpio::Level::High, config);
-    let rd = esp_hal::gpio::Output::new(peripherals.GPIO9, esp_hal::gpio::Level::High, config);
-    let rst = esp_hal::gpio::Output::new(peripherals.GPIO5, esp_hal::gpio::Level::High, config);
-
-    // other pins
-    // power on: on
-    // bl = backlight (?): on
-    // cs = child select: low (active low)
-    let mut lcd_power_on =
-        esp_hal::gpio::Output::new(peripherals.GPIO15, esp_hal::gpio::Level::High, config);
-    let mut lcd_bl =
-        esp_hal::gpio::Output::new(peripherals.GPIO38, esp_hal::gpio::Level::High, config);
-    let mut lcd_cs =
-        esp_hal::gpio::Output::new(peripherals.GPIO6, esp_hal::gpio::Level::Low, config);
-    //lcd_cs.set_low(); ;
-    //lcd_power_on.set_high();
-    //lcd_bl.set_high();
-
-    let bus = Generic8BitBus::new((
-        lcd_d0, lcd_d1, lcd_d2, lcd_d3, lcd_d4, lcd_d5, lcd_d6, lcd_d7,
-    ));
-    let di = ParallelInterface::new(bus, dc, wr);
-
-    let mut delay = Delay::new();
-
-    // inspired by https://github.com/almindor/mipidsi/blob/master/examples/spi-st7789-rpi-zero-w/src/main.rs
-    Builder::new(ST7789, di)
-        .reset_pin(rst)
-        .invert_colors(ColorInversion::Inverted)
-        .init(&mut delay)
-        .unwrap()
+fn test_display(display: &mut lilygo_hal::Display) {
+    log::debug!("Starting test of display");
+    let delay = Delay::new();
+    display.clear(Rgb565::RED).unwrap();
+    delay.delay_millis(300u32);
+    log::info!("Starting test images");
+    mipidsi::TestImage::new().draw(display).unwrap();
 }
 
 #[main]
@@ -101,28 +49,39 @@ fn main() -> ! {
     // generator version: 0.5.0
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
-    let mut delay = Delay::new();
 
-    let mut buffer = [0_u8; 512];
-    let mut display = lcd_display_setup(peripherals);
+    let (mut display, (button_0, button_1)) = lilygo_hal::setup(peripherals);
+    //test_display(&mut display);
 
     display.clear(Rgb565::RED).unwrap();
-    let colors = [
-        Rgb565::RED,
-        Rgb565::GREEN,
-        Rgb565::BLUE,
-        Rgb565::YELLOW,
-        Rgb565::CYAN,
-        Rgb565::MAGENTA,
-        Rgb565::WHITE,
-        Rgb565::BLACK,
-    ];
-    let mut colors = colors.iter().cycle();
+
+    let mut toggle_0 = false;
+    let mut toggle_1 = false;
+
+    // clear the background only once
+    Ui::new_fullscreen(&mut display, medsize_rgb565_style())
+        .clear_background()
+        .unwrap();
+
+    let mut buffer = [Rgb565::new(0, 0, 0);
+        lilygo_hal::DISPLAY_PIXEL_COUNT];
     loop {
+        toggle_0 = button_0.is_low();
+        toggle_1 = button_1.is_low();
+
         info!("Hello world!");
-        let new_color = colors.next().unwrap();
-        display.clear(*new_color).unwrap();
-        delay.delay_millis(1000);
+        let mut ui = Ui::new_fullscreen(&mut display, medsize_rgb565_style());
+        ui.set_buffer(&mut buffer);
+        // restart the counter at the start (or end) of the loop
+        ui.add(Label::new("Basic Example").with_font(ascii::FONT_10X20));
+
+        ui.add_horizontal(ToggleSwitch::new(&mut toggle_1));
+        ui.add(Label::new("Button 1").with_font(ascii::FONT_10X20));
+
+        ui.new_row();
+
+        ui.add_horizontal(ToggleSwitch::new(&mut toggle_0));
+        ui.add(Label::new("Button 0").with_font(ascii::FONT_10X20));
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.0/examples/src/bin

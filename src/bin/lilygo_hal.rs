@@ -1,5 +1,15 @@
-use esp_hal::{delay::Delay, gpio::{InputConfig, OutputConfig}};
-use mipidsi::{interface::{Generic8BitBus, ParallelInterface}, models::ST7789, options::ColorInversion, Builder};
+use esp_hal::{
+    delay::Delay,
+    gpio::{InputConfig, OutputConfig},
+    i2c::master::I2c,
+    time::Rate,
+};
+use mipidsi::{
+    interface::{Generic8BitBus, ParallelInterface},
+    models::ST7789,
+    options::ColorInversion,
+    Builder,
+};
 
 pub type PinOut = esp_hal::gpio::Output<'static>;
 pub type PinIn = esp_hal::gpio::Input<'static>;
@@ -39,108 +49,129 @@ pub mod lilygo_display_config {
 pub const DISPLAY_PIXEL_COUNT: usize =
     lilygo_display_config::WIDTH as usize * lilygo_display_config::HEIGHT as usize;
 
-pub fn setup(peripherals: esp_hal::peripherals::Peripherals) -> (Display, (PinIn, PinIn)) {
+pub fn setup(
+    peripherals: esp_hal::peripherals::Peripherals,
+) -> (Display, (PinIn, PinIn), I2c<'static, esp_hal::Blocking>) {
     // == DISPLAY SETUP ==
+    let display = {
+        let lcd_out_config = OutputConfig::default();
+        // Pinout: Check T-DISPLAY-S3 pinout documentation
+        let lcd_d0: esp_hal::gpio::Output<'_> = esp_hal::gpio::Output::new(
+            peripherals.GPIO39,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
+        let lcd_d1 = esp_hal::gpio::Output::new(
+            peripherals.GPIO40,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
+        let lcd_d2 = esp_hal::gpio::Output::new(
+            peripherals.GPIO41,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
+        let lcd_d3 = esp_hal::gpio::Output::new(
+            peripherals.GPIO42,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
+        let lcd_d4 = esp_hal::gpio::Output::new(
+            peripherals.GPIO45,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
+        let lcd_d5 = esp_hal::gpio::Output::new(
+            peripherals.GPIO46,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
+        let lcd_d6 = esp_hal::gpio::Output::new(
+            peripherals.GPIO47,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
+        let lcd_d7 = esp_hal::gpio::Output::new(
+            peripherals.GPIO48,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
 
-    let lcd_out_config = OutputConfig::default();
-    // Pinout: Check T-DISPLAY-S3 pinout documentation
-    let lcd_d0: esp_hal::gpio::Output<'_> = esp_hal::gpio::Output::new(
-        peripherals.GPIO39,
-        esp_hal::gpio::Level::Low,
-        lcd_out_config,
-    );
-    let lcd_d1 = esp_hal::gpio::Output::new(
-        peripherals.GPIO40,
-        esp_hal::gpio::Level::Low,
-        lcd_out_config,
-    );
-    let lcd_d2 = esp_hal::gpio::Output::new(
-        peripherals.GPIO41,
-        esp_hal::gpio::Level::Low,
-        lcd_out_config,
-    );
-    let lcd_d3 = esp_hal::gpio::Output::new(
-        peripherals.GPIO42,
-        esp_hal::gpio::Level::Low,
-        lcd_out_config,
-    );
-    let lcd_d4 = esp_hal::gpio::Output::new(
-        peripherals.GPIO45,
-        esp_hal::gpio::Level::Low,
-        lcd_out_config,
-    );
-    let lcd_d5 = esp_hal::gpio::Output::new(
-        peripherals.GPIO46,
-        esp_hal::gpio::Level::Low,
-        lcd_out_config,
-    );
-    let lcd_d6 = esp_hal::gpio::Output::new(
-        peripherals.GPIO47,
-        esp_hal::gpio::Level::Low,
-        lcd_out_config,
-    );
-    let lcd_d7 = esp_hal::gpio::Output::new(
-        peripherals.GPIO48,
-        esp_hal::gpio::Level::Low,
-        lcd_out_config,
-    );
+        let lcd_dc = esp_hal::gpio::Output::new(
+            peripherals.GPIO7,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
+        let lcd_wr = esp_hal::gpio::Output::new(
+            peripherals.GPIO8,
+            esp_hal::gpio::Level::High,
+            lcd_out_config,
+        );
+        let lcd_rd = esp_hal::gpio::Output::new(
+            peripherals.GPIO9,
+            esp_hal::gpio::Level::High,
+            lcd_out_config,
+        );
+        let lcd_rst = esp_hal::gpio::Output::new(
+            peripherals.GPIO5,
+            esp_hal::gpio::Level::High,
+            lcd_out_config,
+        );
 
-    let lcd_dc =
-        esp_hal::gpio::Output::new(peripherals.GPIO7, esp_hal::gpio::Level::Low, lcd_out_config);
-    let lcd_wr = esp_hal::gpio::Output::new(
-        peripherals.GPIO8,
-        esp_hal::gpio::Level::High,
-        lcd_out_config,
-    );
-    let lcd_rd = esp_hal::gpio::Output::new(
-        peripherals.GPIO9,
-        esp_hal::gpio::Level::High,
-        lcd_out_config,
-    );
-    let lcd_rst = esp_hal::gpio::Output::new(
-        peripherals.GPIO5,
-        esp_hal::gpio::Level::High,
-        lcd_out_config,
-    );
+        let lcd_power_on = esp_hal::gpio::Output::new(
+            peripherals.GPIO15,
+            esp_hal::gpio::Level::High,
+            lcd_out_config,
+        );
+        let lcd_bl = esp_hal::gpio::Output::new(
+            peripherals.GPIO38,
+            esp_hal::gpio::Level::High,
+            lcd_out_config,
+        );
+        let lcd_cs = esp_hal::gpio::Output::new(
+            peripherals.GPIO6,
+            esp_hal::gpio::Level::Low,
+            lcd_out_config,
+        );
 
-    let lcd_power_on = esp_hal::gpio::Output::new(
-        peripherals.GPIO15,
-        esp_hal::gpio::Level::High,
-        lcd_out_config,
-    );
-    let lcd_bl = esp_hal::gpio::Output::new(
-        peripherals.GPIO38,
-        esp_hal::gpio::Level::High,
-        lcd_out_config,
-    );
-    let lcd_cs =
-        esp_hal::gpio::Output::new(peripherals.GPIO6, esp_hal::gpio::Level::Low, lcd_out_config);
-
-    let display = lcd_display_setup(
-        (
-            lcd_d0, lcd_d1, lcd_d2, lcd_d3, lcd_d4, lcd_d5, lcd_d6, lcd_d7,
-        ),
-        lcd_dc,
-        lcd_wr,
-        lcd_rd,
-        lcd_rst,
-        lcd_power_on,
-        lcd_bl,
-        lcd_cs,
-    );
-
+        lcd_display_setup(
+            (
+                lcd_d0, lcd_d1, lcd_d2, lcd_d3, lcd_d4, lcd_d5, lcd_d6, lcd_d7,
+            ),
+            lcd_dc,
+            lcd_wr,
+            lcd_rd,
+            lcd_rst,
+            lcd_power_on,
+            lcd_bl,
+            lcd_cs,
+        )
+    };
     // == BUTTON SETUP ==
-    let input_config = InputConfig::default();
-    let button_0 = esp_hal::gpio::Input::new(peripherals.GPIO0, input_config);
-    let button_1 = esp_hal::gpio::Input::new(peripherals.GPIO14, input_config);
+    let (button_0, button_1) = {
+        let input_config = InputConfig::default();
+        (
+            esp_hal::gpio::Input::new(peripherals.GPIO0, input_config),
+            esp_hal::gpio::Input::new(peripherals.GPIO14, input_config),
+        )
+    };
+
+    // == I2C SETUP ==
+    let config = esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(100));
+
+    // You need to configure the driver during initialization:
+    let i2c = I2c::new(peripherals.I2C0, config)
+        .unwrap() //TODO: handle error - return Result
+        .with_sda(peripherals.GPIO21)
+        .with_scl(peripherals.GPIO16);
 
     // Return the items
-    (display, (button_0, button_1))
+    (display, (button_0, button_1), i2c)
 }
 
 /// Creates and initializes the display
 /// A small wrapper around the mipidsi display builder
-/// 
+///
 /// Can panic if the display cannot be initialized
 fn lcd_display_setup(
     data: (

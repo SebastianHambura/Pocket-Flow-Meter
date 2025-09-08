@@ -44,6 +44,21 @@ fn test_display(display: &mut lilygo_hal::Display) {
     mipidsi::TestImage::new().draw(display).unwrap();
 }
 
+fn test_i2c(mut i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>) {
+    const DEVICE_ADDR: u8 = 0x77;
+    let write_buffer = [0xAA];
+    let mut read_buffer = [0u8; 22];
+    let delay = Delay::new();
+    loop {
+        log::info!("Sending I2C command");
+        match i2c.write(DEVICE_ADDR, &write_buffer) {
+            Ok(_) => log::info!("I2C write successful"),
+            Err(e) => log::error!("I2C write error: {e:?}"),
+        }
+        delay.delay_millis(500);
+    }
+}
+
 #[main]
 fn main() -> ! {
     esp_println::logger::init_logger_from_env();
@@ -54,7 +69,8 @@ fn main() -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    let (mut display, (button_0, button_1)) = lilygo_hal::setup(peripherals);
+    let (mut display, (button_0, button_1), i2c) = lilygo_hal::setup(peripherals);
+    test_i2c(i2c);
     //test_display(&mut display);
 
     display.clear(Rgb565::RED).unwrap();

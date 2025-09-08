@@ -20,7 +20,9 @@ use kolibri_embedded_gui::toggle_switch::ToggleSwitch;
 use kolibri_embedded_gui::ui::Ui;
 use log::info;
 
-use embedded_graphics::{prelude::*};
+use embedded_charts::prelude::*;
+use embedded_graphics::prelude::*;
+use micromath::F32Ext;
 
 mod lilygo_hal;
 
@@ -46,6 +48,8 @@ fn test_display(display: &mut lilygo_hal::Display) {
 fn main() -> ! {
     esp_println::logger::init_logger_from_env();
 
+    esp_alloc::heap_allocator!(size: 32 * 1024);
+
     // generator version: 0.5.0
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -63,9 +67,33 @@ fn main() -> ! {
         .clear_background()
         .unwrap();
 
-    let mut buffer = [Rgb565::new(0, 0, 0);
-        lilygo_hal::DISPLAY_PIXEL_COUNT];
+    let mut buffer = [Rgb565::new(0, 0, 0); lilygo_hal::DISPLAY_PIXEL_COUNT];
+
+    let mut stream = SlidingWindowSeries::<Point2D, 256>::new();
+    // Set up animated chart
+    let chart = AnimatedLineChart::builder()
+        .line_color(Rgb565::CSS_LIME_GREEN)
+        .line_width(2)
+        .fill_area(Rgb565::new(0, 0, 0)) // Semi-transparent fill
+        .frame_rate(10)
+        .with_title("Test title")
+        .with_grid(
+            GridSystem::builder()
+                .enabled(true)
+                .horizontal_linear(GridSpacing::Auto)
+                .vertical_linear(GridSpacing::Auto)
+                .build(),
+        )
+        .build()
+        .unwrap();
+
+    let delay = Delay::new();
+    let mut i = 0;
     loop {
+        let timestamp = i as f32 * 0.1;
+        let value = 50.0 + 20.0 * (timestamp * 0.5).sin();
+        stream.push(Point2D::new(timestamp, value));
+
         toggle_0 = button_0.is_low();
         toggle_1 = button_1.is_low();
 
@@ -75,13 +103,24 @@ fn main() -> ! {
         // restart the counter at the start (or end) of the loop
         ui.add(Label::new("Basic Example").with_font(ascii::FONT_10X20));
 
-        ui.add_horizontal(ToggleSwitch::new(&mut toggle_1));
-        ui.add(Label::new("Button 1").with_font(ascii::FONT_10X20));
+        ui.add_horizontal(ToggleSwitch::new(&mut toggle_1).height(15));
+        ui.add(Label::new("Button 1").with_font(ascii::FONT_6X10));
+
+        let allocation = ui.allocate_space(Size::new(250, 80));
 
         ui.new_row();
+        ui.add_horizontal(ToggleSwitch::new(&mut toggle_0).height(15));
+        ui.add(Label::new("Button 0").with_font(ascii::FONT_6X10));
+        let result: Result<(), u32> = match allocation {
+            Ok(res) => Ok(()), //chart.draw(&stream, chart.config(), res.area, &mut display),
+            Err(err) => {
+                log::error!("{err:?}");
+                Ok(())
+            }
+        };
 
-        ui.add_horizontal(ToggleSwitch::new(&mut toggle_0));
-        ui.add(Label::new("Button 0").with_font(ascii::FONT_10X20));
+        i += 1;
+        delay.delay_millis(100);
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.0/examples/src/bin

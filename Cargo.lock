@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "allocator-api2"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78200ac3468a57d333cd0ea5dd398e25111194dcacd49208afca95c629a6311d"
+
+[[package]]
 name = "anyhow"
 version = "1.0.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -326,6 +332,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedded-charts"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0f40f8efdf5a3671d058fac2598a3aebab60ff0b643caadf9ebf5e29dc33719"
+dependencies = [
+ "embedded-graphics",
+ "heapless",
+ "micromath",
+]
+
+[[package]]
 name = "embedded-graphics"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -441,6 +458,20 @@ name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+
+[[package]]
+name = "esp-alloc"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e95f1de57ce5a6600368f3d3c931b0dfe00501661e96f5ab83bc5cdee031784"
+dependencies = [
+ "allocator-api2",
+ "cfg-if",
+ "critical-section",
+ "document-features",
+ "enumset",
+ "linked_list_allocator",
+]
 
 [[package]]
 name = "esp-bootloader-esp-idf"
@@ -701,12 +732,15 @@ name = "flow-meter"
 version = "0.1.0"
 dependencies = [
  "critical-section",
+ "embedded-charts",
  "embedded-graphics",
+ "esp-alloc",
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-println",
  "kolibri-embedded-gui",
  "log",
+ "micromath",
  "mipidsi",
 ]
 
@@ -886,6 +920,12 @@ dependencies = [
  "foldhash",
  "heapless",
 ]
+
+[[package]]
+name = "linked_list_allocator"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9afa463f5405ee81cdb9cc2baf37e08ec7e4c8209442b5d72c04cfb2cd6e6286"
 
 [[package]]
 name = "litrs"

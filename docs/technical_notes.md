@@ -9,6 +9,8 @@ Lilygo's display: compatible with ST7789
 Rust driver: mipidsi should have a driver for ST7789
 - mipidsi is compatible with embedded-graphics
 - kolibri-embbeded-gui is compatible with embedded-graphics
+- For plots: https://crates.io/crates/embedded-plots ? or maybe https://crates.io/crates/embedded-charts ?
+
 
 Other interesting tutorials:
 - https://github.com/mgrenonville/esp32-mipidsi-clock

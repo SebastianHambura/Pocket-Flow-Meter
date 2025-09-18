@@ -70,7 +70,7 @@ fn main() -> ! {
     let peripherals = esp_hal::init(config);
 
     let (mut display, (button_0, button_1), i2c) = lilygo_hal::setup(peripherals);
-    test_i2c(i2c);
+    //test_i2c(i2c);
     //test_display(&mut display);
 
     display.clear(Rgb565::RED).unwrap();

@@ -1,0 +1,9 @@
+[package]
+name = "sensirion-SLF"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embedded-hal = "1.0.0"
+byteorder = { version = "1.5.0", default-features = false }
+anyhow = { version = "1.0", default-features = false }

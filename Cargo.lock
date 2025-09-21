@@ -776,6 +776,7 @@ dependencies = [
  "log",
  "micromath",
  "mipidsi",
+ "sensirion-SLF",
 ]
 
 [[package]]

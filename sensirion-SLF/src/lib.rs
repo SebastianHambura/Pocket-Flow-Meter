@@ -1,4 +1,4 @@
-use std::any;
+#![no_std]
 
 use anyhow::{Result, anyhow};
 use embedded_hal::i2c::I2c;
@@ -135,12 +135,14 @@ fn convert_error<I: embedded_hal::i2c::ErrorType>(
 
 #[cfg(test)]
 pub mod tests {
+
+    extern crate std;
     use embedded_hal_mock::eh1::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
     use sensirion_i2c::crc8;
 
     use crate::{Command, SLF3S};
 
-    fn with_crc(data: Vec<u8>) -> Vec<u8> {
+    fn with_crc(data: std::vec::Vec<u8>) -> std::vec::Vec<u8> {
         assert!(data.len() % 2 == 0);
         data.chunks_exact(2)
             .flat_map(|bytes| [bytes[0], bytes[1], crc8::calculate(&[bytes[0], bytes[1]])])
@@ -153,7 +155,7 @@ pub mod tests {
         let flow: u16 = 0xDEAD;
         let temp: u16 = 0xBEEF;
         let signal: u16 = 0x1234;
-        let bytes: Vec<_> = [flow.to_be_bytes(), temp.to_be_bytes(), signal.to_be_bytes()].concat();
+        let bytes: std::vec::Vec<_> = [flow.to_be_bytes(), temp.to_be_bytes(), signal.to_be_bytes()].concat();
         let expectations = [
             I2cTransaction::write(
                 addr,
@@ -176,11 +178,11 @@ pub mod tests {
         assert_eq!(flow_read, flow);
         assert_eq!(temp_read, temp);
         assert_eq!(signal_read, signal);
-        println!("flow: {flow:#x}, temp:{temp:#x}, signal: {signal:#x}");
+        std::println!("flow: {flow:#x}, temp:{temp:#x}, signal: {signal:#x}");
         let (flow, temp, signal) = sensirion.read_measurement().unwrap();
-        println!("flow: {flow:#x}, temp:{temp:#x}, signal: {signal:#x}");
+        std::println!("flow: {flow:#x}, temp:{temp:#x}, signal: {signal:#x}");
         let (flow, temp, signal) = sensirion.read_measurement().unwrap();
-        println!("flow: {flow:#x}, temp:{temp:#x}, signal: {signal:#x}");
+        std::println!("flow: {flow:#x}, temp:{temp:#x}, signal: {signal:#x}");
         sensirion.stop_measurement().unwrap();
 
         i2c.done();
@@ -203,7 +205,7 @@ pub mod tests {
         let mut sensirion = SLF3S::new(i2c.clone());
 
         let (device, SN) = sensirion.read_product_id().unwrap();
-        println!("device: {device:#X}, SN: {SN:#X}");
+        std::println!("device: {device:#X}, SN: {SN:#X}");
 
         i2c.done();
     }

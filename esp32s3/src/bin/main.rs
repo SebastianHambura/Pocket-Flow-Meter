@@ -22,8 +22,16 @@ use log::info;
 
 use embedded_charts::prelude::*;
 use embedded_graphics::prelude::*;
+
+use embedded_charts::data::{
+    OverflowMode, PointRingBuffer, RingBuffer, RingBufferConfig, RingBufferEvent,
+};
+
 use micromath::F32Ext;
 
+use crate::gui::SensorWidget;
+
+mod gui;
 mod lilygo_hal;
 
 #[panic_handler]
@@ -51,6 +59,7 @@ fn test_i2c(mut i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>) {
     let delay = Delay::new();
     loop {
         log::info!("Sending I2C command");
+
         match i2c.write(DEVICE_ADDR, &write_buffer) {
             Ok(_) => log::info!("I2C write successful"),
             Err(e) => log::error!("I2C write error: {e:?}"),
@@ -85,30 +94,20 @@ fn main() -> ! {
 
     let mut buffer = [Rgb565::new(0, 0, 0); lilygo_hal::DISPLAY_PIXEL_COUNT];
 
-    let mut stream = SlidingWindowSeries::<Point2D, 256>::new();
-    // Set up animated chart
-    let chart = AnimatedLineChart::builder()
-        .line_color(Rgb565::CSS_LIME_GREEN)
-        .line_width(2)
-        .fill_area(Rgb565::new(0, 0, 0)) // Semi-transparent fill
-        .frame_rate(10)
-        .with_title("Test title")
-        .with_grid(
-            GridSystem::builder()
-                .enabled(true)
-                .horizontal_linear(GridSpacing::Auto)
-                .vertical_linear(GridSpacing::Auto)
-                .build(),
-        )
-        .build()
-        .unwrap();
+    let mut sensor: SensorWidget<100> = gui::SensorWidget::new();
 
     let delay = Delay::new();
     let mut i = 0;
     loop {
-        let timestamp = i as f32 * 0.1;
-        let value = 50.0 + 20.0 * (timestamp * 0.5).sin();
-        stream.push(Point2D::new(timestamp, value));
+        sensor.new_sensor_value(i as f32);
+
+        // Use chronological iterator for proper time ordering
+        let mut chart_data = sensor.get_static_data();
+
+        // Calculate moving average
+        // if let Some(avg) = streaming_buffer.moving_average(20) {
+        //     display_average(avg);
+        // }
 
         toggle_0 = button_0.is_low();
         toggle_1 = button_1.is_low();
@@ -128,7 +127,10 @@ fn main() -> ! {
         ui.add_horizontal(ToggleSwitch::new(&mut toggle_0).height(15));
         ui.add(Label::new("Button 0").with_font(ascii::FONT_6X10));
         let result: Result<(), u32> = match allocation {
-            Ok(res) => Ok(()), //chart.draw(&stream, chart.config(), res.area, &mut display),
+            Ok(res) => {
+                sensor.chart(res.area, &mut display);
+                Ok(())
+            }
             Err(err) => {
                 log::error!("{err:?}");
                 Ok(())

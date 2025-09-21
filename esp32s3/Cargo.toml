@@ -30,6 +30,8 @@ micromath = "2.1.0"
 esp-alloc = "0.8.0"
 anyhow = { version = "1.0", default-features = false }
 
+sensirion-SLF = { path = "../sensirion-SLF" }
+
 
 [profile.dev]
 # Rust debug is too slow.

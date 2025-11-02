@@ -57,7 +57,7 @@ fn test_display(display: &mut lilygo_hal::Display) {
 
 fn test_i2c(mut i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>) {
     let mut sensor = sensirion_SLF::SLF3S::new(i2c);
-   
+
     //sensor. ;
     const DEVICE_ADDR: u8 = 0x77;
     //let write_buffer = [0xAA];
@@ -66,39 +66,44 @@ fn test_i2c(mut i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>) {
     loop {
         log::info!("Sending I2C command");
 
-        match  sensor.read_product_id() {
-            Ok((product_number, serial_number)) => log::info!("PN: {product_number:x}, SN: {serial_number:x}"),
+        match sensor.read_product_id() {
+            Ok((product_number, serial_number)) => {
+                log::info!("PN: {product_number:x}, SN: {serial_number:x}")
+            }
             Err(e) => log::error!("I2C write error: {e:?}"),
         }
         delay.delay_millis(500);
     }
 }
 pub struct GPIODriver {
-    pin: esp_hal::gpio::Input<'static>
+    pin: esp_hal::gpio::Input<'static>,
 }
 
-impl PinWrapper for GPIODriver<> {
+impl PinWrapper for GPIODriver {
     fn is_high(&mut self) -> bool {
         self.pin.is_high()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct WrappedInstant {
-    instant: Instant
+    instant: Instant,
 }
 
-impl InstantProvider for WrappedInstant {
+impl InstantProvider<core::time::Duration> for WrappedInstant {
     fn now() -> Self {
-        Self{ instant: Instant::now() }
+        Self {
+            instant: Instant::now(),
+        }
     }
 }
 
 impl core::ops::Sub for WrappedInstant {
-    type Output = Duration;
+    type Output = core::time::Duration;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        self.instant - rhs.instant
+        let ms = (self.instant - rhs.instant).as_millis();
+        core::time::Duration::from_millis(ms)
     }
 }
 
@@ -112,8 +117,10 @@ fn main() -> ! {
     let peripherals = esp_hal::init(config);
 
     let (mut display, (button_0, button_1), i2c) = lilygo_hal::setup(peripherals);
-    let wrapped_button = GPIODriver{pin: button_0} ;
-    let mut button_driver: button_driver::Button<_, > = button_driver::Button::new(wrapped_button, ButtonConfig::default()) ;
+    let wrapped_button = GPIODriver { pin: button_0 };
+    let config = ButtonConfig::default();
+    let mut button_driver: button_driver::Button<_, WrappedInstant> =
+        button_driver::Button::new(wrapped_button, config);
     let mut sensor = sensor::Sensor::new(i2c);
     //test_display(&mut display);
 
@@ -134,12 +141,11 @@ fn main() -> ! {
     let delay = Delay::new();
     let mut i = 0;
     loop {
-        button_driver.tick() ;
+        button_driver.tick();
         if let Some(meas) = sensor.get_measurement(i as f32) {
             sensor_widget.new_sensor_value(meas);
         }
-        log::info!("{:?}", sensor.get_ID()) ;
-        
+        log::info!("{:?}", sensor.get_ID());
 
         // Use chronological iterator for proper time ordering
         let mut chart_data = sensor_widget.get_static_data();
@@ -149,7 +155,7 @@ fn main() -> ! {
         //     display_average(avg);
         // }
 
-        toggle_0 = button_0.is_low();
+        toggle_0 = button_driver.is_clicked() ;
         toggle_1 = button_1.is_low();
 
         info!("Hello world!");

@@ -149,7 +149,7 @@ pub fn setup(
     };
     // == BUTTON SETUP ==
     let (button_0, button_1) = {
-        let input_config = InputConfig::default();
+        let input_config = InputConfig::default().with_pull(esp_hal::gpio::Pull::Up);
         (
             esp_hal::gpio::Input::new(peripherals.GPIO0, input_config),
             esp_hal::gpio::Input::new(peripherals.GPIO14, input_config),

@@ -162,8 +162,8 @@ pub fn setup(
     // You need to configure the driver during initialization:
     let i2c = I2c::new(peripherals.I2C0, config)
         .unwrap() //TODO: handle error - return Result
-        .with_sda(peripherals.GPIO21)
-        .with_scl(peripherals.GPIO16);
+        .with_sda(peripherals.GPIO16)
+        .with_scl(peripherals.GPIO21);
 
     // Return the items
     (display, (button_0, button_1), i2c)

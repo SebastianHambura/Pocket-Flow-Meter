@@ -35,3 +35,11 @@ See [the technical notes](./docs/technical_notes.md) for more information about 
 
 ### Sensor
 
+### Rust workspace organisation
+esp32 -> target esp32
+sensition-SLF -> target host
+Different targets: needs some nighlty cargo features: https://users.rust-lang.org/t/can-i-configure-rust-analyzer-vscode-to-use-a-different-target-for-different-crates-in-my-workspce/123661/2
+```
+rustup toolchain install nightly
+rustup override set nightly
+```

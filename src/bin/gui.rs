@@ -30,10 +30,11 @@ impl<const N: usize > SensorWidget<N> {
         });
 
         let chart = AnimatedLineChart::builder()
-            .line_color(Rgb565::CSS_LIME_GREEN)
+            .line_color(Rgb565::BLUE)
             .line_width(2)
-            .fill_area(Rgb565::new(0, 0, 0)) // Semi-transparent fill
-            .frame_rate(10)
+            .margins(Margins::symmetric(5, 5))
+            .fill_area(Rgb565::BLACK) // Semi-transparent fill
+            .frame_rate(1)
             .with_title("Test title")
             .with_grid(
                 GridSystem::builder()
@@ -51,11 +52,9 @@ impl<const N: usize > SensorWidget<N> {
         }
     }
 
-    pub fn new_sensor_value(&mut self, i: f32) {
-        let timestamp = i * 0.1;
-        let value = 50.0 + 20.0 * (timestamp * 0.5).sin();
+    pub fn new_sensor_value(&mut self, measurement: crate::sensor::Measurement) {
         self.streaming_buffer
-            .push_point(Point2D::new(timestamp, value))
+            .push_point(measurement.flow)
             .unwrap();
     }
 

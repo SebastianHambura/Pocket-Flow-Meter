@@ -6,7 +6,7 @@
     holding buffers for the duration of a data transfer."
 )]
 
-use embedded_graphics::mono_font::ascii;
+use embedded_graphics::mono_font::{ascii, MonoFont};
 use embedded_graphics::pixelcolor::Rgb565;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{InputConfig, OutputConfig, OutputPin, Pin};
@@ -85,7 +85,7 @@ impl PinWrapper for GPIODriver {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WrappedInstant {
     instant: Instant,
 }
@@ -102,9 +102,14 @@ impl core::ops::Sub for WrappedInstant {
     type Output = core::time::Duration;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        let ms = (self.instant - rhs.instant).as_millis();
-        core::time::Duration::from_millis(ms)
+        let ms = (self.instant - rhs.instant).as_micros();
+        core::time::Duration::from_micros(ms)
     }
+}
+
+enum State {
+    Water,
+    Ethanol,
 }
 
 #[main]
@@ -118,7 +123,8 @@ fn main() -> ! {
 
     let (mut display, (button_0, button_1), i2c) = lilygo_hal::setup(peripherals);
     let wrapped_button = GPIODriver { pin: button_0 };
-    let config = ButtonConfig::default();
+    let mut config = ButtonConfig::default();
+    config.mode = button_driver::Mode::PullUp;
     let mut button_driver: button_driver::Button<_, WrappedInstant> =
         button_driver::Button::new(wrapped_button, config);
     let mut sensor = sensor::Sensor::new(i2c);
@@ -138,52 +144,84 @@ fn main() -> ! {
 
     let mut sensor_widget: SensorWidget<100> = gui::SensorWidget::new();
 
+    let mut state = State::Water;
     let delay = Delay::new();
     let mut i = 0;
     loop {
         button_driver.tick();
-        if let Some(meas) = sensor.get_measurement(i as f32) {
-            sensor_widget.new_sensor_value(meas);
-        }
-        log::info!("{:?}", sensor.get_ID());
+        //if let Some(meas) = sensor.get_measurement(i as f32) {
+        //    sensor_widget.new_sensor_value(meas);
+        //}
+        //log::info!("{:?}", sensor.get_ID());
 
         // Use chronological iterator for proper time ordering
-        let mut chart_data = sensor_widget.get_static_data();
+        //let mut chart_data = sensor_widget.get_static_data();
 
         // Calculate moving average
         // if let Some(avg) = streaming_buffer.moving_average(20) {
         //     display_average(avg);
         // }
-
-        toggle_0 = button_driver.is_clicked() ;
-        toggle_1 = button_1.is_low();
-
-        info!("Hello world!");
-        let mut ui = Ui::new_fullscreen(&mut display, medsize_rgb565_style());
-        ui.set_buffer(&mut buffer);
-        // restart the counter at the start (or end) of the loop
-        ui.add(Label::new("Flow meter").with_font(ascii::FONT_10X20));
-
-        ui.add_horizontal(ToggleSwitch::new(&mut toggle_1).height(15));
-        ui.add(Label::new("Button 1").with_font(ascii::FONT_6X10));
-
-        let allocation = ui.allocate_space(Size::new(300, 80));
-
-        ui.new_row();
-        ui.add_horizontal(ToggleSwitch::new(&mut toggle_0).height(15));
-        ui.add(Label::new("Do measurements").with_font(ascii::FONT_6X10));
-        let result: Result<(), u32> = match allocation {
-            Ok(res) => {
-                sensor_widget.chart(res.area, &mut display);
-                Ok(())
-            }
-            Err(err) => {
-                log::error!("{err:?}");
-                Ok(())
-            }
+        //log::info!("{:?}", button_driver.raw_state());
+        if button_driver.is_clicked() {
+            match state {
+                State::Water => {
+                    state = State::Ethanol;
+                    log::info!("Switched to Ethanol mode");
+                }
+                State::Ethanol => {
+                    state = State::Water;
+                    log::info!("Switched to Water mode");
+                }
+            };
         };
 
+        //info!("Hello world!");
+        {
+            use kolibri_embedded_gui::*;
+            use kolibri_embedded_gui::{icon::*, icons::*};
+            let mut ui = Ui::new_fullscreen(&mut display, medsize_rgb565_style());
+            ui.draw_widget_bounds_debug(Rgb565::GREEN);
+            ui.set_buffer(&mut buffer);
+
+            // == Header row ===
+            ui.add_horizontal(IconWidget::new(size18px::actions::AddCircle));
+            ui.add_horizontal(Label::new("Sensirion model").with_font(ascii::FONT_10X20));
+            // Some manual fiddling to push the button to the edge
+            ui.add_horizontal(spacer::Spacer::new(Size::new(55, 0))); // Creating horizontal space
+            ui.add(button::Button::new("Freeze"));
+
+            let allocation = ui.allocate_space(Size::new(200, 100));
+
+            let mut font = ascii::FONT_10X20.clone();
+            //font.character_size = Size::new(20,40) ;
+            ui.add(Label::new("99 uL/min").with_font(font));
+
+            match state {
+                State::Water => {
+                    ui.add_horizontal(Label::new("< Water >").with_font(ascii::FONT_10X20));
+                }
+                State::Ethanol => {
+                    ui.add_horizontal(Label::new("< Ethanol >").with_font(ascii::FONT_10X20));
+                }
+            }
+            ui.add_horizontal(spacer::Spacer::new(Size::new(120, 0))); // Creating horizontal space
+            ui.add(button::Button::new("Switch"));
+
+            // Doing all the non-kolibri drawing separately to avoid borrow issues
+            let result: Result<(), u32> = match allocation {
+                Ok(res) => {
+                    sensor_widget.chart(res.area, &mut display);
+                    Ok(())
+                }
+                Err(err) => {
+                    //log::error!("{err:?}");
+                    Ok(())
+                }
+            };
+        }
+
         i += 1;
+        button_driver.reset();
         delay.delay_millis(100);
     }
 

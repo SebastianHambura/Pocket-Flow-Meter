@@ -80,7 +80,7 @@ impl<const N: usize > SensorWidget<N> {
         ) {
             Ok(_) => (),
             Err(err) => {
-                log::error!("{err:?}");
+                //log::error!("{err:?}");
                 ()
             }
         };

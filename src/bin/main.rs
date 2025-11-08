@@ -179,8 +179,8 @@ fn main() -> ! {
         {
             use kolibri_embedded_gui::*;
             use kolibri_embedded_gui::{icon::*, icons::*};
-            let mut ui = Ui::new_fullscreen(&mut display, medsize_rgb565_style());
-            ui.draw_widget_bounds_debug(Rgb565::GREEN);
+            let mut ui = Ui::new_fullscreen(&mut display, style::medsize_light_rgb565_style());
+            ui.clear_background().unwrap();
             ui.set_buffer(&mut buffer);
 
             // == Header row ===

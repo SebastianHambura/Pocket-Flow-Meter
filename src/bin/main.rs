@@ -10,6 +10,7 @@ use embedded_graphics::mono_font::{ascii, MonoFont};
 use embedded_graphics::pixelcolor::Rgb565;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{InputConfig, OutputConfig, OutputPin, Pin};
+use esp_hal::i2c::master::I2c;
 use esp_hal::time::{Duration, Instant};
 use esp_hal::{delay::Delay, main};
 use kolibri_embedded_gui::button::{self, Button};
@@ -30,8 +31,10 @@ use embedded_charts::data::{
 };
 
 use micromath::F32Ext;
+use sensirion_SLF::Sensor;
 
 use crate::gui::SensorWidget;
+use crate::sensor::Measurement;
 
 mod gui;
 mod lilygo_hal;
@@ -56,7 +59,7 @@ fn test_display(display: &mut lilygo_hal::Display) {
 }
 
 fn test_i2c(mut i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>) {
-    let mut sensor = sensirion_SLF::SLF3S::new(i2c);
+    let mut sensor = sensirion_SLF::slf3::SLF3S::new(i2c);
 
     //sensor. ;
     const DEVICE_ADDR: u8 = 0x77;
@@ -68,7 +71,7 @@ fn test_i2c(mut i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>) {
 
         match sensor.read_product_id() {
             Ok((product_number, serial_number)) => {
-                log::info!("PN: {product_number:x}, SN: {serial_number:x}")
+                log::info!("PN: {product_number:?}, SN: {serial_number:x}")
             }
             Err(e) => log::error!("I2C write error: {e:?}"),
         }
@@ -112,6 +115,12 @@ enum State {
     Ethanol,
 }
 
+type BlockingI2C = I2c<'static, esp_hal::Blocking>;
+enum SensorType {
+    Real(sensirion_SLF::slf3::SLF3S<BlockingI2C>),
+    Fake(sensirion_SLF::fake_sensor::FakeSLF3),
+}
+
 #[main]
 fn main() -> ! {
     esp_println::logger::init_logger_from_env();
@@ -127,7 +136,23 @@ fn main() -> ! {
     config.mode = button_driver::Mode::PullUp;
     let mut button_driver: button_driver::Button<_, WrappedInstant> =
         button_driver::Button::new(wrapped_button, config);
-    let mut sensor = sensor::Sensor::new(i2c);
+
+    let mut slf_sensor = sensirion_SLF::slf3::SLF3S::new(i2c);
+    let mut slf_sensor = match slf_sensor.read_product_id() {
+        Ok(val) => {
+            log::info!("Sensor detected !");
+            log::debug!("Product ID: {:?}", val);
+            log::info!("Sensor ID: {}", val.0.raw_value());
+            SensorType::Real(slf_sensor)
+        }
+        Err(err) => {
+            log::error!("No sensor detected: {:?}", err);
+            log::info!("Continuing with fake sensor");
+            SensorType::Fake(sensirion_SLF::fake_sensor::FakeSLF3::new(0, 100, 20))
+        }
+    };
+    //let mut sensor = sensor::Sensor::new(i2c);
+
     //test_display(&mut display);
 
     display.clear(Rgb565::RED).unwrap();
@@ -136,9 +161,12 @@ fn main() -> ! {
     let mut toggle_1 = false;
 
     // clear the background only once
-    Ui::new_fullscreen(&mut display, medsize_rgb565_style())
-        .clear_background()
-        .unwrap();
+    Ui::new_fullscreen(
+        &mut display,
+        kolibri_embedded_gui::style::medsize_light_rgb565_style(),
+    )
+    .clear_background()
+    .unwrap();
 
     let mut buffer = [Rgb565::new(0, 0, 0); lilygo_hal::DISPLAY_PIXEL_COUNT];
 
@@ -149,18 +177,28 @@ fn main() -> ! {
     let mut i = 0;
     loop {
         button_driver.tick();
-        //if let Some(meas) = sensor.get_measurement(i as f32) {
-        //    sensor_widget.new_sensor_value(meas);
-        //}
-        //log::info!("{:?}", sensor.get_ID());
+        let mes = match slf_sensor {
+            SensorType::Real(ref mut slf3_s) => slf3_s.read_measurement(),
+            SensorType::Fake(ref mut fake_slf3) => fake_slf3.read_measurement(),
+        };
+        match mes {
+            Ok(values) => {
+                sensor_widget.new_sensor_value(Measurement::new(
+                    i as f32,
+                    values.0 as f32,
+                    values.1 as f32,
+                ));
+            }
+            Err(err) => log::error!("{:?}", err),
+        }
 
         // Use chronological iterator for proper time ordering
-        //let mut chart_data = sensor_widget.get_static_data();
+        let mut chart_data = sensor_widget.get_static_data();
 
         // Calculate moving average
-        // if let Some(avg) = streaming_buffer.moving_average(20) {
-        //     display_average(avg);
-        // }
+        //if let Some(avg) = streaming_buffer.moving_average(20) {
+        //    display_average(avg);
+        //}
         //log::info!("{:?}", button_driver.raw_state());
         if button_driver.is_clicked() {
             match state {
@@ -180,7 +218,7 @@ fn main() -> ! {
             use kolibri_embedded_gui::*;
             use kolibri_embedded_gui::{icon::*, icons::*};
             let mut ui = Ui::new_fullscreen(&mut display, style::medsize_light_rgb565_style());
-            ui.clear_background().unwrap();
+            //ui.clear_background().unwrap();
             ui.set_buffer(&mut buffer);
 
             // == Header row ===
@@ -190,31 +228,51 @@ fn main() -> ! {
             ui.add_horizontal(spacer::Spacer::new(Size::new(55, 0))); // Creating horizontal space
             ui.add(button::Button::new("Freeze"));
 
-            let allocation = ui.allocate_space(Size::new(200, 100));
+            let chart_allocation = ui.allocate_space(Size::new(200, 100));
+            let mut legend_allocation = ui.allocate_space(Size::new(100, 50));
+            // ui.sub_ui(|sub_ui| {
+            //     legend_allocation = sub_ui.allocate_space(Size::new(100, 50));
+            //     sub_ui.add(Label::new("99 uL/min").with_font(ascii::FONT_10X20));
+            //     Ok(())
+            // }).unwrap();
 
-            let mut font = ascii::FONT_10X20.clone();
+            //let legend_allocation = ui.allocate_space(Size::new(100, 100));
+            //let mut font = ascii::FONT_10X20.clone();
             //font.character_size = Size::new(20,40) ;
-            ui.add(Label::new("99 uL/min").with_font(font));
-
+            //ui.add(Label::new("99 uL/min").with_font(font));
+            ui.new_row();
+            ui.add_horizontal(IconWidget::new(size18px::navigation::NavArrowLeft));
             match state {
                 State::Water => {
-                    ui.add_horizontal(Label::new("< Water >").with_font(ascii::FONT_10X20));
+                    ui.add_horizontal(Label::new(" Water ").with_font(ascii::FONT_10X20));
+                    //ui.add_horizontal(spacer::Spacer::new(Size::new(2*20, 0))); // Creating horizontal space
                 }
                 State::Ethanol => {
-                    ui.add_horizontal(Label::new("< Ethanol >").with_font(ascii::FONT_10X20));
+                    ui.add_horizontal(Label::new("Ethanol").with_font(ascii::FONT_10X20));
                 }
             }
-            ui.add_horizontal(spacer::Spacer::new(Size::new(120, 0))); // Creating horizontal space
+            ui.add_horizontal(IconWidget::new(size18px::navigation::NavArrowRight));
+            ui.add_horizontal(spacer::Spacer::new(Size::new(100, 0))); // Creating horizontal space
             ui.add(button::Button::new("Switch"));
 
             // Doing all the non-kolibri drawing separately to avoid borrow issues
-            let result: Result<(), u32> = match allocation {
+            let result: Result<(), u32> = match chart_allocation {
                 Ok(res) => {
                     sensor_widget.chart(res.area, &mut display);
                     Ok(())
                 }
                 Err(err) => {
-                    //log::error!("{err:?}");
+                    log::error!("{err:?}");
+                    Ok(())
+                }
+            };
+            let result: Result<(), u32> = match legend_allocation {
+                Ok(res) => {
+                    sensor_widget.legend_widget(res.area, &mut display);
+                    Ok(())
+                }
+                Err(err) => {
+                    log::error!("{err:?}");
                     Ok(())
                 }
             };

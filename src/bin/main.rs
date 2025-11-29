@@ -36,7 +36,9 @@ use sensirion_SLF::Sensor;
 use crate::gui::SensorWidget;
 use crate::sensor::Measurement;
 
+
 mod gui;
+mod custom_widgets;
 mod lilygo_hal;
 mod sensor;
 
@@ -170,7 +172,7 @@ fn main() -> ! {
 
     let mut buffer = [Rgb565::new(0, 0, 0); lilygo_hal::DISPLAY_PIXEL_COUNT];
 
-    let mut sensor_widget: SensorWidget<100> = gui::SensorWidget::new();
+    let mut sensor_widget: SensorWidget<256> = gui::SensorWidget::new();
 
     let mut state = State::Water;
     let delay = Delay::new();
@@ -186,14 +188,14 @@ fn main() -> ! {
                 sensor_widget.new_sensor_value(Measurement::new(
                     i as f32,
                     values.0 as f32,
-                    values.1 as f32,
+                    (values.1 as f32 - values.0 as f32),
                 ));
             }
             Err(err) => log::error!("{:?}", err),
         }
 
         // Use chronological iterator for proper time ordering
-        let mut chart_data = sensor_widget.get_static_data();
+        //let mut chart_data = sensor_widget.get_static_data();
 
         // Calculate moving average
         //if let Some(avg) = streaming_buffer.moving_average(20) {
@@ -269,6 +271,7 @@ fn main() -> ! {
             let result: Result<(), u32> = match legend_allocation {
                 Ok(res) => {
                     sensor_widget.legend_widget(res.area, &mut display);
+                    sensor_widget.current_values_widget(res.area, &mut display).unwrap() ;
                     Ok(())
                 }
                 Err(err) => {

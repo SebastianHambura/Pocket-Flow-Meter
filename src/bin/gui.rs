@@ -1,53 +1,49 @@
+use core::fmt::Write;
+
 use embedded_charts::data::{OverflowMode, RingBufferConfig};
 use embedded_charts::prelude::*;
 use embedded_charts::{
     chart::AnimatedLineChart,
     data::{Point2D, PointRingBuffer, RingBuffer, RingBufferEvent, StaticDataSeries},
 };
-use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::*;
+use embedded_graphics::mono_font::MonoTextStyle;
 use micromath::F32Ext;
 
+use crate::custom_widgets::ValueWithLabelWidget;
 pub struct SensorWidget<const N: usize> {
-    flow_buffer: RingBuffer<Point2D, N>,
-    temp_buffer: RingBuffer<Point2D, N>,
-    chart: AnimatedLineChart<Rgb565>,
+    // The different graphs
+    flow_graph: MeasuredValueWidget<N>,
+    temperature_graph: MeasuredValueWidget<N>,
+
+    // The legend for the graph
     legend: StandardLegend<Rgb565>,
     legend_renderer: StandardLegendRenderer<Rgb565>,
+    legend_already_drawn: bool,
+
+    // Displaying the real-time value
+    flow_text: ValueWithLabelWidget<5, 6>,
+    temperature_text: ValueWithLabelWidget<5, 6>,
 }
 
-impl<const N: usize> SensorWidget<N> {
-    pub fn new() -> Self {
-        // Configure for real-time streaming
-        let config = RingBufferConfig {
-            overflow_mode: OverflowMode::Overwrite, // Overwrite oldest data
-            enable_events: true,                    // Event notifications
-            track_bounds: true,                     // Auto bounds tracking
-            ..Default::default()
-        };
+struct MeasuredValueWidget<const N: usize> {
+    stream: StreamingAnimator<Point2D>,
+    serie: StaticDataSeries<Point2D, 256>,
+    //buffer: RingBuffer<Point2D, N>,
+    pub chart: AnimatedLineChart<Rgb565>,
+}
 
-        let mut flow_buffer: RingBuffer<Point2D, N> = RingBuffer::with_config(config);
-        // Set up event handler
-        flow_buffer.set_event_handler(|event| match event {
-            RingBufferEvent::BufferFull => log::debug!("Buffer is now full!"),
-            RingBufferEvent::BoundsChanged => log::debug!("Data bounds have changed"),
-            _ => {}
-        });
-
-        let mut temp_buffer: RingBuffer<Point2D, N> = RingBuffer::with_config(config);
-        temp_buffer.set_event_handler(|event| match event {
-            RingBufferEvent::BufferFull => log::debug!("Buffer is now full!"),
-            RingBufferEvent::BoundsChanged => log::debug!("Data bounds have changed"),
-            _ => {}
-        });
-
+impl<const N: usize> MeasuredValueWidget<N> {
+    pub fn new(color: Rgb565) -> Self {
         let chart = AnimatedLineChart::builder()
-            .line_color(Rgb565::BLUE)
+            .line_color(color)
             .line_width(2)
-            .margins(Margins::symmetric(5, 5))
-            //.fill_area(Rgb565::BLACK) // Semi-transparent fill
-            //.frame_rate(1)
-            .with_title("Test title")
+            .with_markers(MarkerStyle {
+                shape: MarkerShape::Circle,
+                size: 4,
+                color,
+                visible: true,
+            })
             .with_grid(
                 GridSystem::builder()
                     .enabled(true)
@@ -55,85 +51,134 @@ impl<const N: usize> SensorWidget<N> {
                     .vertical_linear(GridSpacing::Auto)
                     .build(),
             )
-            .background_color(Rgb565::CSS_AZURE)
             .build()
             .unwrap();
 
-        // Create legend
+        let stream = StreamingAnimator::<Point2D>::new();
+
+        Self {
+            stream,
+            serie: StaticDataSeries::<Point2D, 256>::new(),
+            chart,
+        }
+    }
+
+    pub fn push_point(&mut self, point: Point2D) {
+        //self.stream.update_with_delta(16) ;
+        self.stream.push_data(point)
+    }
+
+    pub fn set_background_color(&mut self, background_color: Option<Rgb565>) {
+        let mut config = self.chart.config().clone();
+        config.background_color = background_color;
+        self.chart.set_config(config);
+    }
+
+    pub fn draw_chart<T: DrawTarget<Color = Rgb565>>(
+        &mut self,
+        viewport: embedded_graphics::primitives::Rectangle,
+        display: &mut T,
+    ) -> ChartResult<()> {
+        self.serie.clear();
+        for point in self.stream.current_data() {
+            self.serie.push(point);
+        }
+
+        self.chart
+            .draw(&self.serie, &self.chart.config(), viewport, display)
+    }
+}
+
+impl<const N: usize> SensorWidget<N> {
+    pub fn new() -> Self {
         let legend = StandardLegendBuilder::new()
             .position(LegendPos::TopRight)
-            .add_line_entry("Temperature", Rgb565::CSS_STEEL_BLUE)
-            .unwrap()
-            .add_line_entry("Flow", Rgb565::CSS_RED)
-            .unwrap()
-            .professional_style()
-            .build()
+            .professional_style();
+
+        // Flow measurments
+        let legend = legend
+            .add_line_entry("Flow", Rgb565::CSS_STEEL_BLUE)
             .unwrap();
+        let mut flow = MeasuredValueWidget::new(Rgb565::CSS_STEEL_BLUE);
+        flow.set_background_color(Some(Rgb565::WHITE));
+        let flow_text = ValueWithLabelWidget::new("uL/min");
+
+        // Temperature measurements
+        let legend = legend
+            .add_line_entry("Temperature", Rgb565::CSS_RED)
+            .unwrap();
+        let temp = MeasuredValueWidget::new(Rgb565::CSS_RED);
+        let temp_text = ValueWithLabelWidget::new("°C");
+
+        // Create legend
+        let legend = legend.build().unwrap();
         let legend_renderer: StandardLegendRenderer<Rgb565> = StandardLegendRenderer::new();
 
         Self {
-            flow_buffer: flow_buffer,
-            temp_buffer: temp_buffer,
-            chart: chart,
-            legend: legend,
-            legend_renderer: legend_renderer,
+            flow_graph: flow,
+            temperature_graph: temp,
+            legend,
+            legend_renderer,
+            legend_already_drawn: false,
+            flow_text,
+            temperature_text: temp_text,
         }
     }
 
     pub fn new_sensor_value(&mut self, measurement: crate::sensor::Measurement) {
-        self.flow_buffer.push_point(measurement.flow).unwrap();
-        self.temp_buffer.push_point(measurement.temp).unwrap();
-    }
-
-    pub fn get_static_data(&self) -> MultiSeries<Point2D, 2, 256> {
-        let mut multi_series: MultiSeries<Point2D, 2, 256> = MultiSeries::new();
-
-        // Use chronological iterator for proper time ordering
-        let mut flow_data = StaticDataSeries::<Point2D, 256>::new();
-        for point in self.flow_buffer.iter_chronological() {
-            flow_data.push(*point).unwrap();
-        }
-        let mut temp_data = StaticDataSeries::<Point2D, 256>::new();
-        for point in self.temp_buffer.iter_chronological() {
-            temp_data.push(*point).unwrap();
-        }
-
-        multi_series.add_series(flow_data).unwrap();
-        multi_series.add_series(temp_data).unwrap();
-        multi_series
-    }
-
-    pub fn chart<T: DrawTarget<Color = Rgb565>>(
-        &mut self,
-        res: embedded_graphics::primitives::Rectangle,
-        display: &mut T,
-    ) {
-        let data = self.get_static_data();
-        self.chart
-            .draw(
-                data.get_series(0).unwrap(),
-                self.chart.config(),
-                res,
-                display,
-            )
-            .unwrap();
+        self.flow_graph.push_point(measurement.flow);
+        self.flow_text.update_value(measurement.flow.y);
+        self.temperature_graph.push_point(measurement.temp);
+        self.temperature_text.update_value(measurement.temp.y);
     }
 
     pub fn legend_widget<T: DrawTarget<Color = Rgb565>>(
         &mut self,
         res: embedded_graphics::primitives::Rectangle,
         display: &mut T,
-    ) {
-        self.legend_renderer
-            .render(&self.legend, res, display)
-            .unwrap();
+    ) -> ChartResult<()> {
+        if !self.legend_already_drawn {
+            self.legend_renderer.render(&self.legend, res, display)?;
+            self.legend_already_drawn = true;
+        }
+        Ok(())
+    }
 
-        TextRenderer::draw_text(
-            "99uL/min",
-            Point { x: res.top_left.x, y: res.bottom_right().unwrap().y - 30 },
-            &MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK),
-            display,
-        )
-        .unwrap();
+    pub fn current_values_widget<T: DrawTarget<Color = Rgb565>>(
+        &mut self,
+        res: embedded_graphics::primitives::Rectangle,
+        display: &mut T,
+    ) -> Result<(), RenderError> {
+        let mut style = MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK);
+        style.background_color = Some(Rgb565::WHITE);
+
+        let mut point = Point {
+            x: res.top_left.x,
+            y: res.bottom_right().unwrap().y - style.font.character_size.height as i32,
+        };
+        self.flow_text.draw(point, &style, display)?;
+
+        point.y -= style.font.character_size.height as i32;
+        self.temperature_text.draw(point, &style, display)?;
+
+        Ok(())
+    }
+}
+
+impl SensorWidget<256> {
+    // from embedded_charts: `type AnimatedData = StaticDataSeries<Point2D, 256>`
+    pub fn chart<T: DrawTarget<Color = Rgb565>>(
+        &mut self,
+        res: embedded_graphics::primitives::Rectangle,
+        display: &mut T,
+    ) {
+        // let flow_data = self.flow.get_static_data();
+        // let temp_data = self.temperature.get_static_data();
+
+        // let mut chart_config = self.flow.chart.config().clone();
+        // chart_config.background_color = Some(Rgb565::CSS_AZURE);
+        self.flow_graph.draw_chart(res, display).unwrap();
+
+        self.temperature_graph.draw_chart(res, display).unwrap();
     }
 }

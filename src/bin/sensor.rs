@@ -13,6 +13,7 @@ pub struct SensorWrapper {
 
 }
 
+#[derive(Debug)]
 pub struct Measurement {
     pub flow: Point2D,
     pub temp: Point2D, 

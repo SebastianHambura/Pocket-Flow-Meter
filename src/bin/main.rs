@@ -8,6 +8,7 @@
 
 use embedded_graphics::mono_font::{ascii, MonoFont};
 use embedded_graphics::pixelcolor::Rgb565;
+use esp_alloc::heap_allocator;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{InputConfig, OutputConfig, OutputPin, Pin};
 use esp_hal::i2c::master::I2c;
@@ -171,14 +172,19 @@ fn main() -> ! {
     .clear_background()
     .unwrap();
 
-    let mut buffer = [Rgb565::new(0, 0, 0); lilygo_hal::DISPLAY_PIXEL_COUNT];
+    let mut buffer = [Rgb565::RED; lilygo_hal::DISPLAY_PIXEL_COUNT];
+    // let mut buffer = Vec::new() ;
+    // buffer.push(Rgb565::RED);
+    // buffer.repeat(lilygo_hal::DISPLAY_PIXEL_COUNT);
 
+    //let mut plot_buffer = [Rgb565::new(0, 0, 0); 320*100];
     let mut sensor_widget: SensorWidget<256> = gui::SensorWidget::new();
 
     let mut state = State::Water;
     let mut update_plot = true;
     let delay = Delay::new();
     let mut i = 0;
+    let mut fbuf = embedded_graphics_framebuf::FrameBuf::new([Rgb565::WHITE; 320 * 100], 320, 100);
     loop {
         // === Do button handling ===
         button_0.tick();
@@ -214,7 +220,7 @@ fn main() -> ! {
                     (values.1 as f32 - values.0 as f32),
                 ));
             }
-            Err(err) => log::error!("{:?}", err),
+            Err(err) => log::error!("[mes] {:?}", err),
         }
 
         {
@@ -238,8 +244,22 @@ fn main() -> ! {
             ));
 
             // === Chart row ===
-            let chart_allocation = ui.allocate_space(Size::new(260, 100));
-            let legend_allocation = ui.allocate_space(Size::new(30, 50));
+            let chart_allocation = match ui.allocate_space(Size::new(260, 100)) {
+                Ok(res) => Some(res.area),
+                Err(err) => {
+                    log::error!("[chart_allocation] {:?}", err);
+                    None
+                }
+            };
+            let legend_allocation = match ui.allocate_space(Size::new(30, 50)) {
+                Ok(res) => Some(res.area),
+                Err(err) => {
+                    log::error!("[legend_allocation] {:?}", err);
+                    None
+                }
+            };
+            let total_area = chart_allocation
+                .map(|rect| rect.resized_width(320, embedded_graphics::geometry::AnchorX::Left));
             ui.new_row();
 
             // === Bottom row ===
@@ -257,33 +277,38 @@ fn main() -> ! {
             ui.add_horizontal(spacer::Spacer::new(Size::new(100, 0))); // Creating horizontal space
             ui.add(button::Button::new("Switch"));
 
+            match ui.finalize() {
+                Ok(_) => (),
+                Err(err) => log::warn!("[finalize] {:?}", err),
+            };
             // === Plotting the graph | Non-kolibri stuff ===
             // Doing all the non-kolibri drawing separately to avoid borrow issues
 
             if update_plot {
-                let result: Result<(), u32> = match chart_allocation {
-                    Ok(res) => {
-                        sensor_widget.chart(res.area, &mut display);
-                        Ok(())
-                    }
-                    Err(err) => {
-                        log::error!("{err:?}");
-                        Ok(())
-                    }
+                if let Some(mut rect) = chart_allocation {
+                    rect.top_left.y = 0 ;
+                    sensor_widget.chart(rect, &mut fbuf);
+                    // match display.fill_contiguous(&rect, fbuf.data.iter().cloned()) { // Don't ask why it's .iter.cloned, but it has to be this
+                    //     Ok(_) => (),
+                    //     Err(err) => log::error!("{:?}", err),
+                    // };
                 };
-                let result: Result<(), u32> = match legend_allocation {
-                    Ok(res) => {
-                        sensor_widget.legend_widget(res.area, &mut display);
-                        sensor_widget
-                            .current_values_widget(res.area, &mut display)
-                            .unwrap();
-                        Ok(())
-                    }
-                    Err(err) => {
-                        log::error!("{err:?}");
-                        Ok(())
-                    }
-                };
+                if let Some(mut rect) = legend_allocation {
+                    rect.top_left.y = 0 ;
+                    sensor_widget.legend_widget(rect, &mut fbuf);
+                    sensor_widget
+                        .current_values_widget(rect, &mut fbuf)
+                        .unwrap();
+                }
+                //let area = Rectangle::new(Point::new(0, 0), fbuf.size());
+
+                if let Some(rect) = total_area {
+
+                    match display.fill_contiguous(&rect, fbuf.data.iter().cloned()) {
+                        Ok(a) => (),
+                        Err(err) => log::error!("{:?}", err),
+                    };
+                }
             }
         }
 
@@ -293,6 +318,13 @@ fn main() -> ! {
         button_0.reset();
         button_1.reset();
         delay.delay_millis(100);
+
+        // let area = Rectangle::new(Point::new(0, 0), fbuf.size());
+        // log::info!("{:?}", area) ;
+        // match display.fill_contiguous(&area, fbuf.data.iter().cloned()) {
+        //     Ok(a) => (),
+        //     Err(err) => log::error!("{:?}", err),
+        // };
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.0/examples/src/bin

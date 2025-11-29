@@ -33,6 +33,7 @@ anyhow = { version = "1.0", default-features = false }
 sensirion-SLF = { git = "https://github.com/SebastianHambura/Sensirion-SLF", features = ["fake_sensor"] }
 button-driver = {version = "0.2.4", features = ["esp"] }
 embedded-hal = "1.0.0"
+embedded-graphics-framebuf = "0.5.0"
 
 
 [profile.dev]

@@ -244,7 +244,6 @@ impl SensorWidget<256> {
         // let mut chart_config = self.flow.chart.config().clone();
         // chart_config.background_color = Some(Rgb565::CSS_AZURE);
         self.flow_graph.draw_chart(res, display).unwrap();
-
         self.temperature_graph.draw_chart(res, display).unwrap();
     }
 }

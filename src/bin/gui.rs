@@ -1,14 +1,10 @@
-use core::fmt::Write;
-
-use embedded_charts::data::{OverflowMode, RingBufferConfig};
 use embedded_charts::prelude::*;
 use embedded_charts::{
     chart::AnimatedLineChart,
-    data::{Point2D, PointRingBuffer, RingBuffer, RingBufferEvent, StaticDataSeries},
+    data::{Point2D, StaticDataSeries},
 };
 use embedded_graphics::mono_font::ascii::*;
 use embedded_graphics::mono_font::MonoTextStyle;
-use micromath::F32Ext;
 
 use crate::custom_widgets::ValueWithLabelWidget;
 pub struct SensorWidget<const N: usize> {
@@ -81,11 +77,11 @@ impl<const N: usize> MeasuredValueWidget<N> {
     ) -> ChartResult<()> {
         self.serie.clear();
         for point in self.stream.current_data() {
-            self.serie.push(point);
+            let _ = self.serie.push(point);
         }
 
         self.chart
-            .draw(&self.serie, &self.chart.config(), viewport, display)
+            .draw(&self.serie, self.chart.config(), viewport, display)
     }
 }
 

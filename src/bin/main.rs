@@ -36,9 +36,8 @@ use sensirion_SLF::Sensor;
 use crate::gui::SensorWidget;
 use crate::sensor::Measurement;
 
-
-mod gui;
 mod custom_widgets;
+mod gui;
 mod lilygo_hal;
 mod sensor;
 
@@ -133,11 +132,13 @@ fn main() -> ! {
     let peripherals = esp_hal::init(config);
 
     let (mut display, (button_0, button_1), i2c) = lilygo_hal::setup(peripherals);
-    let wrapped_button = GPIODriver { pin: button_0 };
     let mut config = ButtonConfig::default();
-    config.mode = button_driver::Mode::PullUp;
-    let mut button_driver: button_driver::Button<_, WrappedInstant> =
-        button_driver::Button::new(wrapped_button, config);
+    // config.mode = button_driver::Mode::PullUp; PullUp is default
+
+    let mut button_0: button_driver::Button<_, WrappedInstant> =
+        button_driver::Button::new(GPIODriver { pin: button_0 }, config);
+    let mut button_1: button_driver::Button<_, WrappedInstant> =
+        button_driver::Button::new(GPIODriver { pin: button_1 }, config);
 
     let mut slf_sensor = sensirion_SLF::slf3::SLF3S::new(i2c);
     let mut slf_sensor = match slf_sensor.read_product_id() {
@@ -175,10 +176,32 @@ fn main() -> ! {
     let mut sensor_widget: SensorWidget<256> = gui::SensorWidget::new();
 
     let mut state = State::Water;
+    let mut update_plot = true;
     let delay = Delay::new();
     let mut i = 0;
     loop {
-        button_driver.tick();
+        // === Do button handling ===
+        button_0.tick();
+        button_1.tick();
+        if button_0.is_clicked() {
+            match state {
+                State::Water => {
+                    state = State::Ethanol;
+                    log::info!("Switched to Ethanol mode");
+                }
+                State::Ethanol => {
+                    state = State::Water;
+                    log::info!("Switched to Water mode");
+                }
+            };
+        };
+
+        if button_1.is_clicked() {
+            update_plot = !update_plot;
+            log::info!("Freeze button clicked (now update_plot = {})", update_plot);
+        }
+
+        // === Handle sensor logic ===
         let mes = match slf_sensor {
             SensorType::Real(ref mut slf3_s) => slf3_s.read_measurement(),
             SensorType::Fake(ref mut fake_slf3) => fake_slf3.read_measurement(),
@@ -194,29 +217,8 @@ fn main() -> ! {
             Err(err) => log::error!("{:?}", err),
         }
 
-        // Use chronological iterator for proper time ordering
-        //let mut chart_data = sensor_widget.get_static_data();
-
-        // Calculate moving average
-        //if let Some(avg) = streaming_buffer.moving_average(20) {
-        //    display_average(avg);
-        //}
-        //log::info!("{:?}", button_driver.raw_state());
-        if button_driver.is_clicked() {
-            match state {
-                State::Water => {
-                    state = State::Ethanol;
-                    log::info!("Switched to Ethanol mode");
-                }
-                State::Ethanol => {
-                    state = State::Water;
-                    log::info!("Switched to Water mode");
-                }
-            };
-        };
-
-        //info!("Hello world!");
         {
+            // === Create and update the screen ===
             use kolibri_embedded_gui::*;
             use kolibri_embedded_gui::{icon::*, icons::*};
             let mut ui = Ui::new_fullscreen(&mut display, style::medsize_light_rgb565_style());
@@ -227,22 +229,20 @@ fn main() -> ! {
             ui.add_horizontal(IconWidget::new(size18px::actions::AddCircle));
             ui.add_horizontal(Label::new("Sensirion model").with_font(ascii::FONT_10X20));
             // Some manual fiddling to push the button to the edge
-            ui.add_horizontal(spacer::Spacer::new(Size::new(55, 0))); // Creating horizontal space
-            ui.add(button::Button::new("Freeze"));
+            ui.add_horizontal(spacer::Spacer::new(Size::new(5, 0))); // Creating horizontal space
+                                                                     // FREEZE : 6
+                                                                     // LIVE-UPDATE : 11
+            ui.add(toggle_button::ToggleButton::new(
+                "Live-update",
+                &mut update_plot,
+            ));
 
+            // === Chart row ===
             let chart_allocation = ui.allocate_space(Size::new(200, 100));
-            let mut legend_allocation = ui.allocate_space(Size::new(100, 50));
-            // ui.sub_ui(|sub_ui| {
-            //     legend_allocation = sub_ui.allocate_space(Size::new(100, 50));
-            //     sub_ui.add(Label::new("99 uL/min").with_font(ascii::FONT_10X20));
-            //     Ok(())
-            // }).unwrap();
-
-            //let legend_allocation = ui.allocate_space(Size::new(100, 100));
-            //let mut font = ascii::FONT_10X20.clone();
-            //font.character_size = Size::new(20,40) ;
-            //ui.add(Label::new("99 uL/min").with_font(font));
+            let legend_allocation = ui.allocate_space(Size::new(100, 50));
             ui.new_row();
+
+            // === Bottom row ===
             ui.add_horizontal(IconWidget::new(size18px::navigation::NavArrowLeft));
             match state {
                 State::Water => {
@@ -257,32 +257,41 @@ fn main() -> ! {
             ui.add_horizontal(spacer::Spacer::new(Size::new(100, 0))); // Creating horizontal space
             ui.add(button::Button::new("Switch"));
 
+            // === Plotting the graph | Non-kolibri stuff ===
             // Doing all the non-kolibri drawing separately to avoid borrow issues
-            let result: Result<(), u32> = match chart_allocation {
-                Ok(res) => {
-                    sensor_widget.chart(res.area, &mut display);
-                    Ok(())
-                }
-                Err(err) => {
-                    log::error!("{err:?}");
-                    Ok(())
-                }
-            };
-            let result: Result<(), u32> = match legend_allocation {
-                Ok(res) => {
-                    sensor_widget.legend_widget(res.area, &mut display);
-                    sensor_widget.current_values_widget(res.area, &mut display).unwrap() ;
-                    Ok(())
-                }
-                Err(err) => {
-                    log::error!("{err:?}");
-                    Ok(())
-                }
-            };
+
+            if update_plot {
+                let result: Result<(), u32> = match chart_allocation {
+                    Ok(res) => {
+                        sensor_widget.chart(res.area, &mut display);
+                        Ok(())
+                    }
+                    Err(err) => {
+                        log::error!("{err:?}");
+                        Ok(())
+                    }
+                };
+                let result: Result<(), u32> = match legend_allocation {
+                    Ok(res) => {
+                        sensor_widget.legend_widget(res.area, &mut display);
+                        sensor_widget
+                            .current_values_widget(res.area, &mut display)
+                            .unwrap();
+                        Ok(())
+                    }
+                    Err(err) => {
+                        log::error!("{err:?}");
+                        Ok(())
+                    }
+                };
+            }
         }
 
+        // === House-keeping
         i += 1;
-        button_driver.reset();
+        // We need to reset the buttons
+        button_0.reset();
+        button_1.reset();
         delay.delay_millis(100);
     }
 

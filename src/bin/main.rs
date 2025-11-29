@@ -238,8 +238,8 @@ fn main() -> ! {
             ));
 
             // === Chart row ===
-            let chart_allocation = ui.allocate_space(Size::new(200, 100));
-            let legend_allocation = ui.allocate_space(Size::new(100, 50));
+            let chart_allocation = ui.allocate_space(Size::new(260, 100));
+            let legend_allocation = ui.allocate_space(Size::new(30, 50));
             ui.new_row();
 
             // === Bottom row ===

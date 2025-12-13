@@ -197,7 +197,7 @@ fn lcd_display_setup(
     child_select.set_low();
     let bus = Generic8BitBus::new(data);
     let di = ParallelInterface::new(bus, dc, wr);
-
+    
     let mut delay = Delay::new();
 
     // inspired by https://github.com/almindor/mipidsi/blob/master/examples/spi-st7789-rpi-zero-w/src/main.rs

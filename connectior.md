@@ -6,3 +6,11 @@
 | 4| GND        | GND
 | 5| SCL        | pin 16  
 | 6| n/C        | GND
+
+top to bottom:
+- yellow
+- orange
+- brown
+- white
+- black
+- red

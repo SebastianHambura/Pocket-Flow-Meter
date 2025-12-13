@@ -8,6 +8,7 @@
 
 use embedded_graphics::mono_font::{ascii, MonoFont};
 use embedded_graphics::pixelcolor::Rgb565;
+use embedded_hal::delay;
 use esp_alloc::heap_allocator;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{InputConfig, OutputConfig, OutputPin, Pin};
@@ -31,8 +32,10 @@ use embedded_charts::data::{
     OverflowMode, PointRingBuffer, RingBuffer, RingBufferConfig, RingBufferEvent,
 };
 
+use core::fmt::Write;
+
 use micromath::F32Ext;
-use sensirion_SLF::Sensor;
+use sensirion_SLF::{slf3, Sensor};
 
 use crate::gui::SensorWidget;
 use crate::sensor::Measurement;
@@ -112,6 +115,7 @@ impl core::ops::Sub for WrappedInstant {
     }
 }
 
+#[derive(Debug)]
 enum State {
     Water,
     Ethanol,
@@ -121,6 +125,36 @@ type BlockingI2C = I2c<'static, esp_hal::Blocking>;
 enum SensorType {
     Real(sensirion_SLF::slf3::SLF3S<BlockingI2C>),
     Fake(sensirion_SLF::fake_sensor::FakeSLF3),
+}
+
+fn set_sensor_state(sensor: &mut SensorType, state: &State) {
+    match sensor {
+        SensorType::Real(slf3_s) => {
+            if let Err(err) = slf3_s.stop_measurement() {
+                log::warn!("Problem stopping measurmenent: {err:?}")
+            };
+            Delay::new().delay_micros(600);
+            //delay.delay_micros(600);
+            if let Err(err) = match state {
+                State::Water => slf3_s.start_continuous_measurement_water(),
+                State::Ethanol => slf3_s.start_continuous_measurement_alcohol(),
+            } {
+                log::warn!("Problem stopping measurmenent: {err:?}")
+            };
+        }
+        SensorType::Fake(fake_slf3) => {
+            log::trace!("Nothing to do for the dake sensor")
+        }
+    }
+    log::info!("Switched to {state:?} mode");
+}
+
+fn fill_string<const N: usize>(str: &mut String<N>, c: char) {
+    let n = str.len();
+    let missing_char = N - n;
+    for _ in 0..missing_char {
+        let _ = str.push(c);
+    }
 }
 
 #[main]
@@ -141,20 +175,47 @@ fn main() -> ! {
     let mut button_1: button_driver::Button<_, WrappedInstant> =
         button_driver::Button::new(GPIODriver { pin: button_1 }, config);
 
+    let mut state = State::Water;
     let mut slf_sensor = sensirion_SLF::slf3::SLF3S::new(i2c);
+    
+    if let Err(err) = slf_sensor.soft_reset() {
+        log::warn!("Error while doing a soft reset: {err:?}")
+    };
+
+    let delay = Delay::new();
+    let mut sensor_name: String<15> = String::new();
+
+    delay.delay_millis(50);
+
     let mut slf_sensor = match slf_sensor.read_product_id() {
         Ok(val) => {
             log::info!("Sensor detected !");
-            log::debug!("Product ID: {:?}", val);
+            log::info!("Product ID: {:?}", val);
             log::info!("Sensor ID: {}", val.0.raw_value());
+            match write!(
+                &mut sensor_name,
+                "SLF{}-{}-{}-{}",
+                val.0.liquid_flow_sensor(),
+                val.0.product_family(),
+                val.0.subtype(),
+                val.0.revision_number()
+            ) {
+                Ok(_) => (),
+                Err(err) => log::warn!("{} (value: {:?})", err, val),
+            };
             SensorType::Real(slf_sensor)
         }
         Err(err) => {
             log::error!("No sensor detected: {:?}", err);
             log::info!("Continuing with fake sensor");
+            write!(&mut sensor_name, "SLF-[DUMMY]",)
+                .expect("it's safe to write this &str into the String");
             SensorType::Fake(sensirion_SLF::fake_sensor::FakeSLF3::new(0, 100, 20))
         }
     };
+    set_sensor_state(&mut slf_sensor, &state);
+    fill_string(&mut sensor_name, ' ');
+
     //let mut sensor = sensor::Sensor::new(i2c);
 
     //test_display(&mut display);
@@ -180,11 +241,11 @@ fn main() -> ! {
     //let mut plot_buffer = [Rgb565::new(0, 0, 0); 320*100];
     let mut sensor_widget: SensorWidget<256> = gui::SensorWidget::new();
 
-    let mut state = State::Water;
     let mut update_plot = true;
-    let delay = Delay::new();
+
     let mut i = 0;
     let mut fbuf = embedded_graphics_framebuf::FrameBuf::new([Rgb565::WHITE; 320 * 100], 320, 100);
+
     loop {
         // === Do button handling ===
         button_0.tick();
@@ -193,13 +254,12 @@ fn main() -> ! {
             match state {
                 State::Water => {
                     state = State::Ethanol;
-                    log::info!("Switched to Ethanol mode");
                 }
                 State::Ethanol => {
                     state = State::Water;
-                    log::info!("Switched to Water mode");
                 }
             };
+            set_sensor_state(&mut slf_sensor, &state);
         };
 
         if button_1.is_clicked() {
@@ -216,8 +276,8 @@ fn main() -> ! {
             Ok(values) => {
                 sensor_widget.new_sensor_value(Measurement::new(
                     i as f32,
-                    values.0 as f32,
-                    (values.1 as f32 - values.0 as f32),
+                    values.0 as f32 / 10.0 , //slf3::SLF3S::<_>::LIQUID_FLOW_RATE_SCALE_FACTOR,
+                    values.1 as f32 / 200.0, //slf3::SLF3S::<_>::TEMPERATURE_SCALE_FACTOR),
                 ));
             }
             Err(err) => log::error!("[mes] {:?}", err),
@@ -233,7 +293,7 @@ fn main() -> ! {
 
             // == Header row ===
             ui.add_horizontal(IconWidget::new(size18px::actions::AddCircle));
-            ui.add_horizontal(Label::new("Sensirion model").with_font(ascii::FONT_10X20));
+            ui.add_horizontal(Label::new(&sensor_name).with_font(ascii::FONT_10X20));
             // Some manual fiddling to push the button to the edge
             ui.add_horizontal(spacer::Spacer::new(Size::new(5, 0))); // Creating horizontal space
                                                                      // FREEZE : 6
@@ -286,7 +346,7 @@ fn main() -> ! {
 
             if update_plot {
                 if let Some(mut rect) = chart_allocation {
-                    rect.top_left.y = 0 ;
+                    rect.top_left.y = 0;
                     sensor_widget.chart(rect, &mut fbuf);
                     // match display.fill_contiguous(&rect, fbuf.data.iter().cloned()) { // Don't ask why it's .iter.cloned, but it has to be this
                     //     Ok(_) => (),
@@ -294,7 +354,7 @@ fn main() -> ! {
                     // };
                 };
                 if let Some(mut rect) = legend_allocation {
-                    rect.top_left.y = 0 ;
+                    rect.top_left.y = 0;
                     sensor_widget.legend_widget(rect, &mut fbuf);
                     sensor_widget
                         .current_values_widget(rect, &mut fbuf)
@@ -303,7 +363,6 @@ fn main() -> ! {
                 //let area = Rectangle::new(Point::new(0, 0), fbuf.size());
 
                 if let Some(rect) = total_area {
-
                     match display.fill_contiguous(&rect, fbuf.data.iter().cloned()) {
                         Ok(a) => (),
                         Err(err) => log::error!("{:?}", err),

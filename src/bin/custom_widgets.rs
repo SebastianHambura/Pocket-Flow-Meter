@@ -4,7 +4,7 @@ use embedded_charts::prelude::*;
 use embedded_graphics::mono_font::MonoTextStyle;
 
 pub struct ValueWithLabelWidget<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize> {
-    value_str: String<VARIABLE_CHARS>,
+    pub value_str: String<VARIABLE_CHARS>,
     label_str: String<CONSTANT_CHARS>,
     const_already_drawn: bool,
 }
@@ -33,7 +33,7 @@ impl<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize>
     pub fn update_value(&mut self, value: f32) {
         //TODO: make this smarter
         self.value_str.clear();
-        match write!(&mut self.value_str, "{}", value) {
+        match write!(&mut self.value_str, "{:05.1}", value) {
             Ok(_) => (),
             Err(err) => log::warn!("{} (value: {})", err, value),
         };
@@ -48,15 +48,15 @@ impl<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize>
         let value_start_point = start_point;
         TextRenderer::draw_text(&self.value_str, value_start_point, style, display)?;
 
-        if !self.const_already_drawn {
-            let mut label_start_point = start_point;
-            label_start_point.x += (VARIABLE_CHARS
-                * (style.font.character_size.width as usize
-                    + style.font.character_spacing as usize))
-                as i32; // value is 4 chars @ FONT_10X20
-            TextRenderer::draw_text(&self.label_str, label_start_point, style, display)?;
-            self.const_already_drawn = true;
-        }
+        // if !self.const_already_drawn {
+        //     let mut label_start_point = start_point;
+        //     label_start_point.x += (VARIABLE_CHARS
+        //         * (style.font.character_size.width as usize
+        //             + style.font.character_spacing as usize))
+        //         as i32; // value is 4 chars @ FONT_10X20
+        //     TextRenderer::draw_text(&self.label_str, label_start_point, style, display)?;
+        //     self.const_already_drawn = true;
+        // }
 
         Ok(())
     }

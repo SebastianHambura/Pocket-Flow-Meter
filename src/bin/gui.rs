@@ -1,11 +1,15 @@
 use anyhow::Context;
+use embedded_bitmap_fonts::terminus::FONT_14x28_BOLD;
 use embedded_charts::{
     chart::AnimatedLineChart,
     data::{Point2D, StaticDataSeries},
 };
 use embedded_charts::{grid, prelude::*};
-use embedded_graphics::mono_font::ascii::*;
 use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::{
+    mono_font::{ascii::*, iso_8859_15::FONT_10X20},
+    text::Text,
+};
 
 use crate::custom_widgets::ValueWithLabelWidget;
 pub struct SensorWidget<const N: usize> {
@@ -172,7 +176,7 @@ impl<const N: usize> SensorWidget<N> {
         let flow_text = ValueWithLabelWidget::new("uL/min");
 
         // Temperature measurements
-        let legend = legend.add_line_entry("Temp", Rgb565::CSS_RED).unwrap();
+        // let legend = legend.add_line_entry("Temp", Rgb565::CSS_RED).unwrap();
         let temp = MeasuredValueWidget::new(Rgb565::CSS_RED, None, AxisPosition::Right);
         let temp_text = ValueWithLabelWidget::new("°C");
 
@@ -210,22 +214,41 @@ impl<const N: usize> SensorWidget<N> {
         Ok(())
     }
 
-    pub fn current_values_widget<T: DrawTarget<Color = Rgb565>>(
+    pub fn current_values_widget<T>(
         &mut self,
         res: embedded_graphics::primitives::Rectangle,
         display: &mut T,
-    ) -> Result<(), RenderError> {
-        let mut style = MonoTextStyle::new(&FONT_6X12, Rgb565::BLACK);
-        style.background_color = Some(Rgb565::WHITE);
+    ) -> Result<(), RenderError>
+    where
+        T: DrawTarget<Color = Rgb565> + embedded_graphics::geometry::OriginDimensions,
+    {
+        use embedded_bitmap_fonts::{terminus::FONT_14x28_BOLD, TextStyle};
+        let larger_font = FONT_14x28_BOLD.pixel_double();
+        let style = TextStyle::new(&larger_font, BinaryColor::On);
+
+        //let mut style = MonoTextStyle::new(&font, Rgb565::RED);
+        //style.background_color = Some(Rgb565::BLACK);
 
         let mut point = Point {
-            x: res.top_left.x - 15, //We going a bit over the plot
-            y: res.bottom_right().unwrap().y - style.font.character_size.height as i32,
+            x: res.top_left.x, //We going a bit over the plot
+            y: res.top_left.y - 10,
         };
-        self.flow_text.draw(point, &style, display)?;
 
-        point.y -= style.font.character_size.height as i32;
-        self.temperature_text.draw(point, &style, display)?;
+        //self.flow_text.draw(point, &style, display)?;
+        let text = Text::new(&self.flow_text.value_str, point, style);
+
+        let background = text.bounding_box();
+        display.fill_solid(&background, Rgb565::BLACK);
+
+        let mut adapter = BinaryToRgb565::new(
+            display,
+            Rgb565::RED, // ON color
+            None,        // OFF = transparent (recommended)
+        );
+        text.draw(&mut adapter);
+
+        //point.y -= style.font.character_size.height as i32;
+        // self.temperature_text.draw(point, &style, display)?;
 
         Ok(())
     }
@@ -244,6 +267,51 @@ impl SensorWidget<256> {
         // let mut chart_config = self.flow.chart.config().clone();
         // chart_config.background_color = Some(Rgb565::CSS_AZURE);
         self.flow_graph.draw_chart(res, display).unwrap();
-        self.temperature_graph.draw_chart(res, display).unwrap();
+
+        // self.temperature_graph.draw_chart(res, display).unwrap();
+    }
+}
+
+pub struct BinaryToRgb565<'a, T> {
+    target: &'a mut T,
+    on_color: Rgb565,
+    off_color: Option<Rgb565>, // None = transparent
+}
+
+impl<'a, T> BinaryToRgb565<'a, T> {
+    pub fn new(target: &'a mut T, on: Rgb565, off: Option<Rgb565>) -> Self {
+        Self {
+            target,
+            on_color: on,
+            off_color: off,
+        }
+    }
+}
+
+impl<T> DrawTarget for BinaryToRgb565<'_, T>
+where
+    T: DrawTarget<Color = Rgb565> + embedded_graphics::geometry::OriginDimensions,
+{
+    type Color = BinaryColor;
+    type Error = T::Error;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Self::Color>>,
+    {
+        self.target
+            .draw_iter(pixels.into_iter().filter_map(|Pixel(p, c)| match c {
+                BinaryColor::On => Some(Pixel(p, self.on_color)),
+                BinaryColor::Off => self.off_color.map(|c| Pixel(p, c)),
+            }))
+    }
+}
+
+impl<T> OriginDimensions for BinaryToRgb565<'_, T>
+where
+    T: OriginDimensions,
+{
+    fn size(&self) -> embedded_graphics::geometry::Size {
+        self.target.size()
     }
 }

@@ -8,6 +8,7 @@
 
 use embedded_graphics::mono_font::{ascii, MonoFont};
 use embedded_graphics::pixelcolor::Rgb565;
+use embedded_graphics::primitives::StyledDrawable;
 use embedded_hal::delay;
 use esp_alloc::heap_allocator;
 use esp_hal::clock::CpuClock;
@@ -31,9 +32,9 @@ use button_driver::{ButtonConfig, InstantProvider, PinWrapper};
 use embedded_charts::data::{
     OverflowMode, PointRingBuffer, RingBuffer, RingBufferConfig, RingBufferEvent,
 };
-use sensirion_SLF::SensorCommunication;
 use sensirion_SLF::models::SLF3S_0600F;
 use sensirion_SLF::slf3_driver::Slf3sDriver;
+use sensirion_SLF::SensorCommunication;
 
 use core::fmt::Write;
 
@@ -178,8 +179,9 @@ fn main() -> ! {
         button_driver::Button::new(GPIODriver { pin: button_1 }, config);
 
     let mut state = State::Water;
-    let mut slf_sensor: Slf3sDriver<_, SLF3S_0600F> = sensirion_SLF::slf3_driver::Slf3sDriver::new(i2c);
-    
+    let mut slf_sensor: Slf3sDriver<_, SLF3S_0600F> =
+        sensirion_SLF::slf3_driver::Slf3sDriver::new(i2c);
+
     if let Err(err) = slf_sensor.soft_reset() {
         log::warn!("Error while doing a soft reset: {err:?}")
     };
@@ -278,7 +280,7 @@ fn main() -> ! {
             Ok(values) => {
                 sensor_widget.new_sensor_value(Measurement::new(
                     i as f32,
-                    values.0 as f32 / 10.0 , //slf3::SLF3S::<_>::LIQUID_FLOW_RATE_SCALE_FACTOR,
+                    values.0 as f32 / 10.0, //slf3::SLF3S::<_>::LIQUID_FLOW_RATE_SCALE_FACTOR,
                     values.1 as f32 / 200.0, //slf3::SLF3S::<_>::TEMPERATURE_SCALE_FACTOR),
                 ));
             }
@@ -289,7 +291,9 @@ fn main() -> ! {
             // === Create and update the screen ===
             use kolibri_embedded_gui::*;
             use kolibri_embedded_gui::{icon::*, icons::*};
+
             let mut ui = Ui::new_fullscreen(&mut display, style::medsize_light_rgb565_style());
+            ui.draw_widget_bounds_debug(Rgb565::GREEN);
             //ui.clear_background().unwrap();
             ui.set_buffer(&mut buffer);
 
@@ -297,15 +301,14 @@ fn main() -> ! {
             ui.add_horizontal(IconWidget::new(size18px::actions::AddCircle));
             ui.add_horizontal(Label::new(&sensor_name).with_font(ascii::FONT_10X20));
             // Some manual fiddling to push the button to the edge
-            ui.add_horizontal(spacer::Spacer::new(Size::new(5*20, 0))); // Creating horizontal space
-                                                                     // FREEZE : 6
-                                                                     // LIVE-UPDATE : 11
+            ui.add_horizontal(spacer::Spacer::new(Size::new(5 * 20, 0))); // Creating horizontal space
+                                                                          // FREEZE : 6
+                                                                          // LIVE-UPDATE : 11
             if update_plot {
                 ui.add(IconWidget::new(size18px::music::Play))
             } else {
-                ui.add(IconWidget::new(size18px::music::Pause)) 
-            } ;
-
+                ui.add(IconWidget::new(size18px::music::Pause))
+            };
 
             // === Chart row ===
             let chart_allocation = match ui.allocate_space(Size::new(260, 100)) {
@@ -315,13 +318,7 @@ fn main() -> ! {
                     None
                 }
             };
-            let legend_allocation = match ui.allocate_space(Size::new(30, 50)) {
-                Ok(res) => Some(res.area),
-                Err(err) => {
-                    log::error!("[legend_allocation] {:?}", err);
-                    None
-                }
-            };
+
             let total_area = chart_allocation
                 .map(|rect| rect.resized_width(320, embedded_graphics::geometry::AnchorX::Left));
             ui.new_row();
@@ -338,8 +335,15 @@ fn main() -> ! {
                 }
             }
             ui.add_horizontal(IconWidget::new(size18px::navigation::NavArrowRight));
-            ui.add_horizontal(spacer::Spacer::new(Size::new(100, 0))); // Creating horizontal space
+            ui.add_horizontal(spacer::Spacer::new(Size::new(20, 0))); // Creating horizontal space
 
+            let legend_allocation = match ui.allocate_space(Size::new(20, 20)) {
+                Ok(res) => Some(res.area),
+                Err(err) => {
+                    log::error!("[legend_allocation] {:?}", err);
+                    None
+                }
+            };
             match ui.finalize() {
                 Ok(_) => (),
                 Err(err) => log::warn!("[finalize] {:?}", err),
@@ -357,10 +361,11 @@ fn main() -> ! {
                     // };
                 };
                 if let Some(mut rect) = legend_allocation {
-                    rect.top_left.y = 0;
-                    sensor_widget.legend_widget(rect, &mut fbuf);
+                    //rect.top_left.y = 0;
+                    //sensor_widget.legend_widget(rect, &mut fbuf);
+                    
                     sensor_widget
-                        .current_values_widget(rect, &mut fbuf)
+                        .current_values_widget(rect, &mut display)
                         .unwrap();
                 }
                 //let area = Rectangle::new(Point::new(0, 0), fbuf.size());

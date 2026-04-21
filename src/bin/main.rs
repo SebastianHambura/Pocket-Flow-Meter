@@ -31,11 +31,13 @@ use button_driver::{ButtonConfig, InstantProvider, PinWrapper};
 use embedded_charts::data::{
     OverflowMode, PointRingBuffer, RingBuffer, RingBufferConfig, RingBufferEvent,
 };
+use sensirion_SLF::SensorCommunication;
+use sensirion_SLF::models::SLF3S_0600F;
+use sensirion_SLF::slf3_driver::Slf3sDriver;
 
 use core::fmt::Write;
 
 use micromath::F32Ext;
-use sensirion_SLF::{slf3, Sensor};
 
 use crate::gui::SensorWidget;
 use crate::sensor::Measurement;
@@ -64,7 +66,7 @@ fn test_display(display: &mut lilygo_hal::Display) {
 }
 
 fn test_i2c(mut i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>) {
-    let mut sensor = sensirion_SLF::slf3::SLF3S::new(i2c);
+    let mut sensor: Slf3sDriver<_, SLF3S_0600F> = sensirion_SLF::slf3_driver::Slf3sDriver::new(i2c);
 
     //sensor. ;
     const DEVICE_ADDR: u8 = 0x77;
@@ -123,7 +125,7 @@ enum State {
 
 type BlockingI2C = I2c<'static, esp_hal::Blocking>;
 enum SensorType {
-    Real(sensirion_SLF::slf3::SLF3S<BlockingI2C>),
+    Real(sensirion_SLF::slf3_driver::Slf3sDriver<BlockingI2C, sensirion_SLF::models::SLF3S_0600F>),
     Fake(sensirion_SLF::fake_sensor::FakeSLF3),
 }
 
@@ -176,7 +178,7 @@ fn main() -> ! {
         button_driver::Button::new(GPIODriver { pin: button_1 }, config);
 
     let mut state = State::Water;
-    let mut slf_sensor = sensirion_SLF::slf3::SLF3S::new(i2c);
+    let mut slf_sensor: Slf3sDriver<_, SLF3S_0600F> = sensirion_SLF::slf3_driver::Slf3sDriver::new(i2c);
     
     if let Err(err) = slf_sensor.soft_reset() {
         log::warn!("Error while doing a soft reset: {err:?}")
@@ -295,13 +297,15 @@ fn main() -> ! {
             ui.add_horizontal(IconWidget::new(size18px::actions::AddCircle));
             ui.add_horizontal(Label::new(&sensor_name).with_font(ascii::FONT_10X20));
             // Some manual fiddling to push the button to the edge
-            ui.add_horizontal(spacer::Spacer::new(Size::new(5, 0))); // Creating horizontal space
+            ui.add_horizontal(spacer::Spacer::new(Size::new(5*20, 0))); // Creating horizontal space
                                                                      // FREEZE : 6
                                                                      // LIVE-UPDATE : 11
-            ui.add(toggle_button::ToggleButton::new(
-                "Live-update",
-                &mut update_plot,
-            ));
+            if update_plot {
+                ui.add(IconWidget::new(size18px::music::Play))
+            } else {
+                ui.add(IconWidget::new(size18px::music::Pause)) 
+            } ;
+
 
             // === Chart row ===
             let chart_allocation = match ui.allocate_space(Size::new(260, 100)) {
@@ -326,16 +330,15 @@ fn main() -> ! {
             ui.add_horizontal(IconWidget::new(size18px::navigation::NavArrowLeft));
             match state {
                 State::Water => {
-                    ui.add_horizontal(Label::new(" Water ").with_font(ascii::FONT_10X20));
+                    ui.add_horizontal(Label::new("H2O ").with_font(ascii::FONT_10X20));
                     //ui.add_horizontal(spacer::Spacer::new(Size::new(2*20, 0))); // Creating horizontal space
                 }
                 State::Ethanol => {
-                    ui.add_horizontal(Label::new("Ethanol").with_font(ascii::FONT_10X20));
+                    ui.add_horizontal(Label::new("EtOH").with_font(ascii::FONT_10X20));
                 }
             }
             ui.add_horizontal(IconWidget::new(size18px::navigation::NavArrowRight));
             ui.add_horizontal(spacer::Spacer::new(Size::new(100, 0))); // Creating horizontal space
-            ui.add(button::Button::new("Switch"));
 
             match ui.finalize() {
                 Ok(_) => (),

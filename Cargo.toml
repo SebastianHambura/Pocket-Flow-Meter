@@ -30,7 +30,7 @@ micromath = "2.1.0"
 esp-alloc = "0.8.0"
 anyhow = { version = "1.0", default-features = false }
 
-sensirion-SLF = { git = "https://github.com/SebastianHambura/Sensirion-SLF", features = ["fake_sensor"] }
+sensirion-SLF = { git = "https://github.com/SebastianHambura/Sensirion-SLF", features = ["fake_sensor"], branch = "new_sensor"}
 button-driver = {version = "0.2.4", features = ["esp"] }
 embedded-hal = "1.0.0"
 embedded-graphics-framebuf = "0.5.0"

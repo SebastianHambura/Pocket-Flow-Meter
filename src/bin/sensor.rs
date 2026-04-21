@@ -4,11 +4,12 @@ use core::result::Result::*;
 use embedded_charts::data::Point2D;
 use esp_hal::i2c::master::I2c;
 use micromath::F32Ext;
-use sensirion_SLF::Sensor;
+use sensirion_SLF::SensorCommunication;
+use sensirion_SLF::models::SLF3S_0600F;
 
 type BlockingI2C = I2c<'static, esp_hal::Blocking>;
 pub struct SensorWrapper {
-    sensor: sensirion_SLF::slf3::SLF3S<BlockingI2C>,
+    sensor: sensirion_SLF::slf3_driver::Slf3sDriver<BlockingI2C, SLF3S_0600F>,
     do_measurements: bool
 
 }
@@ -29,7 +30,7 @@ impl Measurement {
 impl SensorWrapper {
     pub fn new(mut i2c: BlockingI2C) -> Self {
         Self {
-            sensor: sensirion_SLF::slf3::SLF3S::new(i2c),
+            sensor: sensirion_SLF::slf3_driver::Slf3sDriver::new(i2c),
             do_measurements: false,
             
         }

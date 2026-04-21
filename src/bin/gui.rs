@@ -237,6 +237,7 @@ impl<const N: usize> SensorWidget<N> {
         //self.flow_text.draw(point, &style, display)?;
         let text = Text::new(&self.flow_text.value_str, point, style);
 
+        // Paint the background
         let background = text.bounding_box();
         display.fill_solid(&background, Rgb565::BLACK);
 
@@ -245,6 +246,7 @@ impl<const N: usize> SensorWidget<N> {
             Rgb565::RED, // ON color
             None,        // OFF = transparent (recommended)
         );
+
         text.draw(&mut adapter);
 
         //point.y -= style.font.character_size.height as i32;

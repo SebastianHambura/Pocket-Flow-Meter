@@ -293,12 +293,20 @@ fn main() -> ! {
             use kolibri_embedded_gui::{icon::*, icons::*};
 
             let mut ui = Ui::new_fullscreen(&mut display, style::medsize_light_rgb565_style());
-            ui.draw_widget_bounds_debug(Rgb565::GREEN);
+            //ui.draw_widget_bounds_debug(Rgb565::GREEN);
             //ui.clear_background().unwrap();
             ui.set_buffer(&mut buffer);
 
             // == Header row ===
-            ui.add_horizontal(IconWidget::new(size18px::actions::AddCircle));
+            match slf_sensor {
+                SensorType::Real(_) => {
+                    ui.add_horizontal(IconWidget::new(size18px::actions::DoubleCheck))
+                }
+                SensorType::Fake(_) => {
+                    ui.add_horizontal(IconWidget::new(size18px::other::NoLink))
+                }
+            };
+
             ui.add_horizontal(Label::new(&sensor_name).with_font(ascii::FONT_10X20));
             // Some manual fiddling to push the button to the edge
             ui.add_horizontal(spacer::Spacer::new(Size::new(5 * 20, 0))); // Creating horizontal space
@@ -363,7 +371,7 @@ fn main() -> ! {
                 if let Some(mut rect) = legend_allocation {
                     //rect.top_left.y = 0;
                     //sensor_widget.legend_widget(rect, &mut fbuf);
-                    
+
                     sensor_widget
                         .current_values_widget(rect, &mut display)
                         .unwrap();

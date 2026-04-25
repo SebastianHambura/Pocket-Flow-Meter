@@ -6,39 +6,24 @@
     holding buffers for the duration of a data transfer."
 )]
 
-use embedded_graphics::mono_font::{ascii, MonoFont};
+use embedded_graphics::mono_font::ascii;
 use embedded_graphics::pixelcolor::Rgb565;
-use embedded_graphics::primitives::StyledDrawable;
-use embedded_hal::delay;
-use esp_alloc::heap_allocator;
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{InputConfig, OutputConfig, OutputPin, Pin};
 use esp_hal::i2c::master::I2c;
-use esp_hal::time::{Duration, Instant};
+use esp_hal::time::Instant;
 use esp_hal::{delay::Delay, main};
-use kolibri_embedded_gui::button::{self, Button};
 use kolibri_embedded_gui::label::Label;
-use kolibri_embedded_gui::smartstate::SmartstateProvider;
-use kolibri_embedded_gui::style::medsize_rgb565_style;
-use kolibri_embedded_gui::toggle_switch::ToggleSwitch;
 use kolibri_embedded_gui::ui::Ui;
-use log::info;
 
 use embedded_charts::prelude::*;
-use embedded_graphics::prelude::*;
 
 use button_driver::{ButtonConfig, InstantProvider, PinWrapper};
 
-use embedded_charts::data::{
-    OverflowMode, PointRingBuffer, RingBuffer, RingBufferConfig, RingBufferEvent,
-};
 use sensirion_SLF::models::SLF3S_0600F;
 use sensirion_SLF::slf3_driver::Slf3sDriver;
 use sensirion_SLF::SensorCommunication;
 
 use core::fmt::Write;
-
-use micromath::F32Ext;
 
 use crate::gui::SensorWidget;
 use crate::sensor::Measurement;
@@ -46,6 +31,7 @@ use crate::sensor::Measurement;
 mod gui;
 mod lilygo_hal;
 mod sensor;
+mod utils;
 mod widgets;
 
 #[panic_handler]

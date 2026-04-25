@@ -3,9 +3,9 @@
 use core::fmt::Write;
 use embedded_bitmap_fonts::terminus::FONT_8x14_BOLD;
 use embedded_charts::prelude::*;
-use embedded_graphics::{mono_font::MonoTextStyle, text::{Baseline, LineHeight, Text}};
+use embedded_graphics::text::{Baseline, Text};
 
-use crate::widgets::value;
+use crate::utils::color_converter::BinaryToRgb565;
 
 pub struct ValueWithLabelWidget<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize> {
     pub value_str: String<VARIABLE_CHARS>,
@@ -49,21 +49,27 @@ impl<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize>
     {
         use embedded_bitmap_fonts::{terminus::FONT_14x28_BOLD, TextStyle};
         let larger_font = FONT_14x28_BOLD.pixel_double();
-        
+
         let mut style = TextStyle::new(&larger_font, BinaryColor::On);
-       
+
         let mut point = start_point;
-        point.y -= 7 ; // Same as line 63
+        point.y -= 7; // Same as line 63
 
         //self.flow_text.draw(point, &style, display)?;
         let mut value_text = Text::with_baseline(&self.value_str, point, style, Baseline::Top);
-        
+
         // Paint the background
         let mut background = value_text.bounding_box();
         // These values are probably FONT and FONT size dependent
-        background = background.resized_height(background.size.height - 7, embedded_graphics::geometry::AnchorY::Bottom);
-        background = background.resized_height(background.size.height - 11, embedded_graphics::geometry::AnchorY::Top);
-        
+        background = background.resized_height(
+            background.size.height - 7,
+            embedded_graphics::geometry::AnchorY::Bottom,
+        );
+        background = background.resized_height(
+            background.size.height - 11,
+            embedded_graphics::geometry::AnchorY::Top,
+        );
+
         display.fill_solid(&background, Rgb565::BLACK);
 
         // Convert from Binary to some colours
@@ -80,7 +86,8 @@ impl<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize>
         // label goes to the right of the value, and a bit below
         let label_point = Point {
             x: background.top_left.x + background.size.width as i32 + 5, // 5 pixels to the right of the value
-            y: background.top_left.y + background.size.height as i32 / 2 - const_style.font.height() as i32 / 2, // 10 pixels below the top of the value
+            y: background.top_left.y + background.size.height as i32 / 2
+                - const_style.font.height() as i32 / 2, // 10 pixels below the top of the value
         };
         let const_text = Text::new(&self.label_str, label_point, const_style);
         //log::info!("Drawing label '{}' at {:?}", self.label_str, label_point);
@@ -90,47 +97,3 @@ impl<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize>
     }
 }
 
-// Needed to convert from BinaryColor (used for text) to Rgb565 (used for display)
-pub struct BinaryToRgb565<'a, T> {
-    target: &'a mut T,
-    on_color: Rgb565,
-    off_color: Option<Rgb565>, // None = transparent
-}
-
-impl<'a, T> BinaryToRgb565<'a, T> {
-    pub fn new(target: &'a mut T, on: Rgb565, off: Option<Rgb565>) -> Self {
-        Self {
-            target,
-            on_color: on,
-            off_color: off,
-        }
-    }
-}
-
-impl<T> DrawTarget for BinaryToRgb565<'_, T>
-where
-    T: DrawTarget<Color = Rgb565> + embedded_graphics::geometry::OriginDimensions,
-{
-    type Color = BinaryColor;
-    type Error = T::Error;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where
-        I: IntoIterator<Item = Pixel<Self::Color>>,
-    {
-        self.target
-            .draw_iter(pixels.into_iter().filter_map(|Pixel(p, c)| match c {
-                BinaryColor::On => Some(Pixel(p, self.on_color)),
-                BinaryColor::Off => self.off_color.map(|c| Pixel(p, c)),
-            }))
-    }
-}
-
-impl<T> OriginDimensions for BinaryToRgb565<'_, T>
-where
-    T: OriginDimensions,
-{
-    fn size(&self) -> embedded_graphics::geometry::Size {
-        self.target.size()
-    }
-}

@@ -43,10 +43,10 @@ use micromath::F32Ext;
 use crate::gui::SensorWidget;
 use crate::sensor::Measurement;
 
-mod custom_widgets;
 mod gui;
 mod lilygo_hal;
 mod sensor;
+mod widgets;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -250,6 +250,7 @@ fn main() -> ! {
     let mut i = 0;
     let mut fbuf = embedded_graphics_framebuf::FrameBuf::new([Rgb565::WHITE; 320 * 100], 320, 100);
 
+    let mut value_widget = widgets::value::ValueWithLabelWidget::<5, 16>::new("uL/min");
     loop {
         // === Do button handling ===
         button_0.tick();
@@ -283,6 +284,7 @@ fn main() -> ! {
                     values.0 as f32 / 10.0, //slf3::SLF3S::<_>::LIQUID_FLOW_RATE_SCALE_FACTOR,
                     values.1 as f32 / 200.0, //slf3::SLF3S::<_>::TEMPERATURE_SCALE_FACTOR),
                 ));
+                value_widget.update_value(values.0 as f32 / 10.0);
             }
             Err(err) => log::error!("[mes] {:?}", err),
         }
@@ -293,7 +295,7 @@ fn main() -> ! {
             use kolibri_embedded_gui::{icon::*, icons::*};
 
             let mut ui = Ui::new_fullscreen(&mut display, style::medsize_light_rgb565_style());
-            //ui.draw_widget_bounds_debug(Rgb565::GREEN);
+            ui.draw_widget_bounds_debug(Rgb565::GREEN);
             //ui.clear_background().unwrap();
             ui.set_buffer(&mut buffer);
 
@@ -302,9 +304,7 @@ fn main() -> ! {
                 SensorType::Real(_) => {
                     ui.add_horizontal(IconWidget::new(size18px::actions::DoubleCheck))
                 }
-                SensorType::Fake(_) => {
-                    ui.add_horizontal(IconWidget::new(size18px::other::NoLink))
-                }
+                SensorType::Fake(_) => ui.add_horizontal(IconWidget::new(size18px::other::NoLink)),
             };
 
             ui.add_horizontal(Label::new(&sensor_name).with_font(ascii::FONT_10X20));
@@ -319,7 +319,7 @@ fn main() -> ! {
             };
 
             // === Chart row ===
-            let chart_allocation = match ui.allocate_space(Size::new(260, 100)) {
+            let chart_allocation = match ui.allocate_space(Size::new(310, 95)) {
                 Ok(res) => Some(res.area),
                 Err(err) => {
                     log::error!("[chart_allocation] {:?}", err);
@@ -327,6 +327,7 @@ fn main() -> ! {
                 }
             };
 
+            //let total_area = chart_allocation ;
             let total_area = chart_allocation
                 .map(|rect| rect.resized_width(320, embedded_graphics::geometry::AnchorX::Left));
             ui.new_row();
@@ -343,7 +344,7 @@ fn main() -> ! {
                 }
             }
             ui.add_horizontal(IconWidget::new(size18px::navigation::NavArrowRight));
-            ui.add_horizontal(spacer::Spacer::new(Size::new(20, 0))); // Creating horizontal space
+            //ui.add_horizontal(spacer::Spacer::new(Size::new(20, 0))); // Creating horizontal space
 
             let legend_allocation = match ui.allocate_space(Size::new(20, 20)) {
                 Ok(res) => Some(res.area),
@@ -371,10 +372,10 @@ fn main() -> ! {
                 if let Some(mut rect) = legend_allocation {
                     //rect.top_left.y = 0;
                     //sensor_widget.legend_widget(rect, &mut fbuf);
-
-                    sensor_widget
-                        .current_values_widget(rect, &mut display)
-                        .unwrap();
+                    value_widget.draw(rect.top_left, &mut display).unwrap();
+                    // sensor_widget
+                    //     .current_values_widget(rect, &mut display)
+                    //     .unwrap();
                 }
                 //let area = Rectangle::new(Point::new(0, 0), fbuf.size());
 

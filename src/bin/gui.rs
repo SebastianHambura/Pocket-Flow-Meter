@@ -5,13 +5,13 @@ use embedded_charts::{
     data::{Point2D, StaticDataSeries},
 };
 use embedded_charts::{grid, prelude::*};
-use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::mono_font::{MonoFont, MonoTextStyle};
 use embedded_graphics::{
     mono_font::{ascii::*, iso_8859_15::FONT_10X20},
     text::Text,
 };
 
-use crate::custom_widgets::ValueWithLabelWidget;
+use crate::widgets::value::ValueWithLabelWidget;
 pub struct SensorWidget<const N: usize> {
     // The different graphs
     flow_graph: MeasuredValueWidget<N>,
@@ -54,13 +54,13 @@ impl<const N: usize> MeasuredValueWidget<N> {
         let chart = AnimatedLineChart::builder()
             .line_color(color)
             .line_width(2)
-            .margins(Margins::symmetric(30, 10))
+            .margins(Margins::new(0, 20, 10, 10)) // Axis gradutation are not part of the plot ( are counted outside)
             .with_markers(MarkerStyle {
                 shape: MarkerShape::Circle,
                 size: 4,
                 color,
                 visible: true,
-            });
+            }) ;
         let chart = if let Some(color) = background_color {
             chart.background_color(color)
         } else {
@@ -225,14 +225,12 @@ impl<const N: usize> SensorWidget<N> {
         use embedded_bitmap_fonts::{terminus::FONT_14x28_BOLD, TextStyle};
         let larger_font = FONT_14x28_BOLD.pixel_double();
         let style = TextStyle::new(&larger_font, BinaryColor::On);
+        
 
         //let mut style = MonoTextStyle::new(&font, Rgb565::RED);
         //style.background_color = Some(Rgb565::BLACK);
 
-        let mut point = Point {
-            x: res.top_left.x, //We going a bit over the plot
-            y: res.top_left.y - 10,
-        };
+        let point = res.top_left ;
 
         //self.flow_text.draw(point, &style, display)?;
         let text = Text::new(&self.flow_text.value_str, point, style);

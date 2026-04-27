@@ -317,6 +317,7 @@ fn main() -> ! {
                     None
                 }
             };
+            
 
             //let total_area = chart_allocation ;
             let total_area = chart_allocation

@@ -20,22 +20,17 @@ pub struct StreamedDataPlot<const N: usize> {
     stream: StreamingAnimator<Point2D>,
     serie: StaticDataSeries<Point2D, 256>,
     //buffer: RingBuffer<Point2D, N>,
-    // pub chart: AnimatedLineChart<COL>,
-    // color: COL,
+    pub chart: AnimatedLineChart<Rgb565>,
+    color: Rgb565,
     plot_background: bool,
     y_axis_side: AxisPosition,
-    pub viewport: Rectangle, //Where to draw the chart on the screen - Try to do something more ergonomic maybe
 }
 
 impl<const N: usize> StreamedDataPlot<N> {
-    pub fn create_chart<T>(
-        &mut self,
+    pub fn create_chart(
         line_color: Rgb565,
         background_color: Option<Rgb565>,
-    ) -> ChartRenderer<T>
-    where
-        T: ChartDrawable,
-    {
+    ) -> ChartResult<AnimatedLineChart<Rgb565>> {
         let chart = AnimatedLineChart::builder()
             .line_color(line_color)
             .line_width(2)
@@ -51,13 +46,14 @@ impl<const N: usize> StreamedDataPlot<N> {
         } else {
             chart
         };
-        let chart = chart.build();
-        ChartRenderer{
-            chart: chart.unwrap()
-        }
+        chart.build()
     }
 
-    pub fn new(plot_background: bool, y_axis_side: AxisPosition, viewport: Rectangle) -> Self {
+    pub fn new(
+        line_color: Rgb565,
+        background_color: Option<Rgb565>,
+        y_axis_side: AxisPosition,
+    ) -> Self {
         // Create X-axis (horizontal, bottom) with calculated range
         // let y_axis = LinearAxisBuilder::new(AxisOrientation::Vertical, AxisPosition::Left)
         //     .range(0.0, 300.0)
@@ -68,14 +64,15 @@ impl<const N: usize> StreamedDataPlot<N> {
         //     .tick_count(y_tick_count)
         //     .show_grid(true)
         //     .build()?;
-
+        let chart = Self::create_chart(line_color, background_color).unwrap();
         let stream = StreamingAnimator::<Point2D>::new();
         Self {
             stream,
             serie: StaticDataSeries::<Point2D, 256>::new(),
-            plot_background: plot_background,
+            plot_background: background_color.is_some(),
             y_axis_side,
-            viewport,
+            chart,
+            color: line_color,
         }
     }
 
@@ -156,97 +153,3 @@ impl<const N: usize> StreamedDataPlot<N> {
             .draw(&self.serie, self.chart.config(), viewport, display)
     }
 }
-
-impl<const N: usize, T: ChartDrawable> Drawable for StreamedDataPlot<N, T> {
-    type Color = T::Color; //Could be made generic if needed
-
-    type Output = ();
-
-    fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
-    where
-        D: DrawTarget<Color = Self::Color>,
-    {
-        let mut proxy = Rgb565Proxy::new(target);
-        let chart = self.create_chart(line_color, background_color)?;
-        chart.draw(&self.serie, chart.config(), self.viewport, &mut proxy);
-        Ok(())
-    }
-}
-
-struct Rgb565Proxy<'a, D, COL> {
-    inner: &'a mut D,
-    _phantom: PhantomData<COL>,
-}
-impl<'a, D, COL> Rgb565Proxy<'a, D, COL> {
-    pub fn new(target: &'a mut D) -> Self {
-        Self {
-            inner: target,
-            _phantom: PhantomData,
-        }
-    }
-}
-impl<'a, D, COL> DrawTarget for Rgb565Proxy<'a, D, COL>
-where
-    D: DrawTarget<Color = COL> + OriginDimensions,
-    COL: PixelColor + From<Rgb565>,
-{
-    type Color = Rgb565;
-    type Error = D::Error;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where
-        I: IntoIterator<Item = embedded_graphics::Pixel<Rgb565>>,
-    {
-        let converted = pixels
-            .into_iter()
-            .map(|p| embedded_graphics::Pixel(p.0, COL::from(p.1)));
-
-        self.inner.draw_iter(converted)
-    }
-}
-
-impl<'a, D, COL> OriginDimensions for Rgb565Proxy<'a, D, COL>
-where
-    D: OriginDimensions,
-    COL: PixelColor + From<Rgb565>,
-{
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-}
-
-pub struct ChartRenderer<T: ChartDrawable> {
-    chart: T,
-}
-
-pub trait ChartDrawable {
-    type Color: PixelColor;
-    fn draw<D>(&self, target: &mut D) -> Result<(), D::Error>
-    where
-        D: DrawTarget<Color = Self::Color>;
-}
-
-impl<T> Drawable for ChartRenderer<T>
-where
-    T: ChartDrawable,
-{
-    type Color = T::Color;
-
-    type Output = ();
-
-    fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
-    where
-        D: DrawTarget<Color = Self::Color>,
-    {
-        todo!()
-    }
-}
-
-
-pub trait IntoChartColor {
-    fn into_rgb565(self) -> Rgb565;
-}
-
-// impl IntoChartColor for Rgb565 {
-//     fn into_rgb565(self) -> Rgb565 { self }
-// }

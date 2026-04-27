@@ -34,7 +34,7 @@ impl<const N: usize> StreamedDataPlot<N> {
         let chart = AnimatedLineChart::builder()
             .line_color(line_color)
             .line_width(2)
-            .margins(Margins::new(0, 20, 10, 10)) // Axis gradutation are not part of the plot ( are counted outside)
+            .margins(Margins::new(0, 10, 10, 25)) // Axis gradutation are not part of the plot ( are counted outside)
             .with_markers(MarkerStyle {
                 shape: MarkerShape::Circle,
                 size: 4,
@@ -92,8 +92,8 @@ impl<const N: usize> StreamedDataPlot<N> {
             .serie
             .bounds()
             .map_err(|err| anyhow::anyhow!("{}", err))
-            .context("Retreiving bounds of Dataserie")?
-            .nice_bounds();
+            .context("Retreiving bounds of Dataserie")?;
+            //.nice_bounds();
 
         let x_axis = presets::professional_x_axis(bounds.min_x, bounds.max_x)
             .show_grid(self.plot_background)

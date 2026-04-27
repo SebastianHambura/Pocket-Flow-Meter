@@ -1,5 +1,6 @@
 //! A widget to display a value with a label, and an optional unit.
 //!
+//! Custom widget, uses the embedded_bitmap_fonts crate to display some big numbers
 use core::fmt::Write;
 use embedded_bitmap_fonts::terminus::FONT_8x14_BOLD;
 use embedded_charts::prelude::*;

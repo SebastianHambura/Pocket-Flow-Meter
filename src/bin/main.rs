@@ -25,7 +25,6 @@ use sensirion_SLF::SensorCommunication;
 
 use core::fmt::Write;
 
-use crate::gui::SensorWidget;
 use crate::sensor::Measurement;
 
 mod gui;
@@ -229,14 +228,19 @@ fn main() -> ! {
     // buffer.repeat(lilygo_hal::DISPLAY_PIXEL_COUNT);
 
     //let mut plot_buffer = [Rgb565::new(0, 0, 0); 320*100];
-    let mut sensor_widget: SensorWidget<256> = gui::SensorWidget::new();
 
     let mut update_plot = true;
 
     let mut i = 0;
     let mut fbuf = embedded_graphics_framebuf::FrameBuf::new([Rgb565::WHITE; 320 * 100], 320, 100);
 
+    // UI components stuff
     let mut value_widget = widgets::value::ValueWithLabelWidget::<5, 16>::new("uL/min");
+    let mut streaming_chart = widgets::chart::StreamedDataPlot::<256>::new(
+        Rgb565::CSS_STEEL_BLUE,
+        Some(Rgb565::WHITE),
+        AxisPosition::Left,
+    );
     loop {
         // === Do button handling ===
         button_0.tick();
@@ -264,13 +268,14 @@ fn main() -> ! {
             SensorType::Fake(ref mut fake_slf3) => fake_slf3.read_measurement(),
         };
         match mes {
-            Ok(values) => {
-                sensor_widget.new_sensor_value(Measurement::new(
-                    i as f32,
-                    values.0 as f32 / 10.0, //slf3::SLF3S::<_>::LIQUID_FLOW_RATE_SCALE_FACTOR,
-                    values.1 as f32 / 200.0, //slf3::SLF3S::<_>::TEMPERATURE_SCALE_FACTOR),
-                ));
-                value_widget.update_value(values.0 as f32 / 10.0);
+            Ok((flow, temp, signal)) => {
+                // sensor_widget.new_sensor_value(Measurement::new(
+                //     i as f32,
+                //     values.0 as f32 / 10.0, //slf3::SLF3S::<_>::LIQUID_FLOW_RATE_SCALE_FACTOR,
+                //     values.1 as f32 / 200.0, //slf3::SLF3S::<_>::TEMPERATURE_SCALE_FACTOR),
+                // ));
+                streaming_chart.push_point(Point2D { x: i as f32, y: flow as f32 });
+                value_widget.update_value(flow as f32 / 10.0);
             }
             Err(err) => log::error!("[mes] {:?}", err),
         }
@@ -349,13 +354,13 @@ fn main() -> ! {
             if update_plot {
                 if let Some(mut rect) = chart_allocation {
                     rect.top_left.y = 0;
-                    sensor_widget.chart(rect, &mut fbuf);
+                    let _ = streaming_chart.draw_chart(rect, &mut fbuf);
                     // match display.fill_contiguous(&rect, fbuf.data.iter().cloned()) { // Don't ask why it's .iter.cloned, but it has to be this
                     //     Ok(_) => (),
                     //     Err(err) => log::error!("{:?}", err),
                     // };
                 };
-                if let Some(mut rect) = legend_allocation {
+                if let Some(rect) = legend_allocation {
                     //rect.top_left.y = 0;
                     //sensor_widget.legend_widget(rect, &mut fbuf);
                     value_widget.draw(rect.top_left, &mut display).unwrap();

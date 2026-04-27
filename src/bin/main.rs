@@ -21,11 +21,9 @@ use button_driver::{ButtonConfig, InstantProvider, PinWrapper};
 
 use sensirion_SLF::models::SLF3S_0600F;
 use sensirion_SLF::slf3_driver::Slf3sDriver;
-use sensirion_SLF::SensorCommunication;
+use sensirion_SLF::{SensorCommunication, SensorInformation};
 
 use core::fmt::Write;
-
-use crate::sensor::Measurement;
 
 mod gui;
 mod lilygo_hal;
@@ -115,25 +113,21 @@ enum SensorType {
     Fake(sensirion_SLF::fake_sensor::FakeSLF3),
 }
 
-fn set_sensor_state(sensor: &mut SensorType, state: &State) {
-    match sensor {
-        SensorType::Real(slf3_s) => {
-            if let Err(err) = slf3_s.stop_measurement() {
-                log::warn!("Problem stopping measurmenent: {err:?}")
-            };
-            Delay::new().delay_micros(600);
-            //delay.delay_micros(600);
-            if let Err(err) = match state {
-                State::Water => slf3_s.start_continuous_measurement_water(),
-                State::Ethanol => slf3_s.start_continuous_measurement_alcohol(),
-            } {
-                log::warn!("Problem stopping measurmenent: {err:?}")
-            };
-        }
-        SensorType::Fake(fake_slf3) => {
-            log::trace!("Nothing to do for the dake sensor")
-        }
-    }
+fn set_sensor_state<Sensor>(sensor: &mut Sensor, state: &State)
+where
+    Sensor: sensirion_SLF::SensorCommunication,
+{
+    if let Err(err) = sensor.stop_measurement() {
+        log::warn!("Problem stopping measurmenent: {err:?}")
+    };
+    Delay::new().delay_micros(600);
+    //delay.delay_micros(600);
+    if let Err(err) = match state {
+        State::Water => sensor.start_continuous_measurement_water(),
+        State::Ethanol => sensor.start_continuous_measurement_alcohol(),
+    } {
+        log::warn!("Problem stopping measurmenent: {err:?}")
+    };
     log::info!("Switched to {state:?} mode");
 }
 
@@ -164,45 +158,29 @@ fn main() -> ! {
         button_driver::Button::new(GPIODriver { pin: button_1 }, config);
 
     let mut state = State::Water;
-    let mut slf_sensor: Slf3sDriver<_, SLF3S_0600F> =
-        sensirion_SLF::slf3_driver::Slf3sDriver::new(i2c);
-
-    if let Err(err) = slf_sensor.soft_reset() {
-        log::warn!("Error while doing a soft reset: {err:?}")
-    };
 
     let delay = Delay::new();
     let mut sensor_name: String<15> = String::new();
 
     delay.delay_millis(50);
 
-    let mut slf_sensor = match slf_sensor.read_product_id() {
-        Ok(val) => {
-            log::info!("Sensor detected !");
-            log::info!("Product ID: {:?}", val);
-            log::info!("Sensor ID: {}", val.0.raw_value());
-            match write!(
-                &mut sensor_name,
-                "SLF{}-{}-{}-{}",
-                val.0.liquid_flow_sensor(),
-                val.0.product_family(),
-                val.0.subtype(),
-                val.0.revision_number()
-            ) {
-                Ok(_) => (),
-                Err(err) => log::warn!("{} (value: {:?})", err, val),
-            };
-            SensorType::Real(slf_sensor)
-        }
-        Err(err) => {
-            log::error!("No sensor detected: {:?}", err);
-            log::info!("Continuing with fake sensor");
-            write!(&mut sensor_name, "SLF-[DUMMY]",)
-                .expect("it's safe to write this &str into the String");
-            SensorType::Fake(sensirion_SLF::fake_sensor::FakeSLF3::new(0, 100, 20))
+    let mut i2c_port = i2c;
+    let mut slf_sensor = loop {
+        match sensor::auto_dectect_sensor(i2c_port) {
+            Ok(sensor) => {
+                break sensor;
+            }
+            Err((i2c, err)) => {
+                i2c_port = i2c;
+                log::error!("{err}");
+                delay.delay_millis(250);
+            }
         }
     };
+
     set_sensor_state(&mut slf_sensor, &state);
+
+    let _ = write!(&mut sensor_name, "{}", slf_sensor.name());
     fill_string(&mut sensor_name, ' ');
 
     //let mut sensor = sensor::Sensor::new(i2c);
@@ -235,7 +213,8 @@ fn main() -> ! {
     let mut fbuf = embedded_graphics_framebuf::FrameBuf::new([Rgb565::WHITE; 320 * 100], 320, 100);
 
     // UI components stuff
-    let mut value_widget = widgets::value::ValueWithLabelWidget::<5, 16>::new("uL/min");
+    let mut value_widget =
+        widgets::value::ValueWithLabelWidget::<5, 16>::new(slf_sensor.flow_unit());
     let mut streaming_chart = widgets::chart::StreamedDataPlot::<256>::new(
         Rgb565::CSS_STEEL_BLUE,
         Some(Rgb565::WHITE),
@@ -263,19 +242,22 @@ fn main() -> ! {
         }
 
         // === Handle sensor logic ===
-        let mes = match slf_sensor {
-            SensorType::Real(ref mut slf3_s) => slf3_s.read_measurement(),
-            SensorType::Fake(ref mut fake_slf3) => fake_slf3.read_measurement(),
-        };
-        match mes {
+        //let mes = slf_sensor.read_measurement();
+        let measure = slf_sensor.read_measurement();
+
+        match measure {
             Ok((flow, temp, signal)) => {
                 // sensor_widget.new_sensor_value(Measurement::new(
                 //     i as f32,
                 //     values.0 as f32 / 10.0, //slf3::SLF3S::<_>::LIQUID_FLOW_RATE_SCALE_FACTOR,
                 //     values.1 as f32 / 200.0, //slf3::SLF3S::<_>::TEMPERATURE_SCALE_FACTOR),
                 // ));
-                streaming_chart.push_point(Point2D { x: i as f32, y: flow as f32 });
-                value_widget.update_value(flow as f32 / 10.0);
+                let flow: f32 = flow.into();
+                streaming_chart.push_point(Point2D {
+                    x: i as f32,
+                    y: flow,
+                });
+                value_widget.update_value(flow / 10.0);
             }
             Err(err) => log::error!("[mes] {:?}", err),
         }
@@ -291,12 +273,13 @@ fn main() -> ! {
             ui.set_buffer(&mut buffer);
 
             // == Header row ===
-            match slf_sensor {
-                SensorType::Real(_) => {
-                    ui.add_horizontal(IconWidget::new(size18px::actions::DoubleCheck))
-                }
-                SensorType::Fake(_) => ui.add_horizontal(IconWidget::new(size18px::other::NoLink)),
-            };
+            // match slf_sensor {
+            //     SensorType::Real(_) => {
+            //         ui.add_horizontal(IconWidget::new(size18px::actions::DoubleCheck))
+            //     }
+            //     SensorType::Fake(_) => ui.add_horizontal(IconWidget::new(size18px::other::NoLink)),
+            // };
+            ui.add_horizontal(IconWidget::new(size18px::actions::DoubleCheck));
 
             ui.add_horizontal(Label::new(&sensor_name).with_font(ascii::FONT_10X20));
             // Some manual fiddling to push the button to the edge
@@ -317,7 +300,6 @@ fn main() -> ! {
                     None
                 }
             };
-            
 
             //let total_area = chart_allocation ;
             let total_area = chart_allocation

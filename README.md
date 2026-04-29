@@ -43,3 +43,9 @@ Different targets: needs some nighlty cargo features: https://users.rust-lang.or
 rustup toolchain install nightly
 rustup override set nightly
 ```
+
+
+Memo to myself: to generate a independent image that contains everything that you can flash on the device at adress 0x0, run :
+```
+cargo espflash save-image --chip esp32s3 --bin flow-meter --release firmware.bin --merge
+```

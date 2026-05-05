@@ -1,6 +1,11 @@
 # Pocket-Flow-Meter
 
-TODO: Fill out this small description part
+Stand-alone flow sensor using Sensirion liquid flow sensor family
+
+This project aims at designing a prototype flow sensor based on Sensirion liquid flow sensor family that works without a computer. The system should have a low-power computational unit to process data in real-time and display via an LCD display. 
+
+Rust script developed by Sebstian Hambura. Sadat Hasan helped around with project management and hardware development.
+This project is a work on progress, so please overlook the flaws. Any suggestions are welcome.
 
 ## Features
 - [ ] Communicate with Sensirion flow sensor

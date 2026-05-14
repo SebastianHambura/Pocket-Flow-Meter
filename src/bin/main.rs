@@ -6,12 +6,7 @@
     holding buffers for the duration of a data transfer."
 )]
 
-use embedded_graphics::image::Image;
-use embedded_graphics::mono_font::{ascii, MonoTextStyle};
 use embedded_graphics::pixelcolor::Rgb565;
-use embedded_graphics::text::Text;
-use embedded_iconoir::prelude::*;
-use embedded_iconoir::size18px;
 use esp_hal::clock::CpuClock;
 use esp_hal::i2c::master::I2c;
 use esp_hal::time::Instant;
@@ -28,10 +23,13 @@ use sensirion_SLF::{SensorCommunication, SensorInformation};
 use core::fmt::Write;
 
 mod gui;
+mod history;
 mod lilygo_hal;
 mod sensor;
-mod utils;
+mod style;
 mod widgets;
+
+mod utils;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -191,24 +189,26 @@ fn main() -> ! {
 
     display.clear(Rgb565::RED).unwrap();
 
-    let mut toggle_0 = false;
-    let mut toggle_1 = false;
-
     let mut update_plot = true;
 
-    let mut i = 0;
     let mut fbuf = embedded_graphics_framebuf::FrameBuf::new([Rgb565::WHITE; 320 * 170], 320, 170);
 
     // UI components stuff
-    let mut value_widget =
-        widgets::value::ValueWithLabelWidget::<5, 16>::new(slf_sensor.flow_unit());
-    let mut streaming_chart = widgets::chart::StreamedDataPlot::<350>::new(
-        Rgb565::CSS_STEEL_BLUE,
-        Some(Rgb565::WHITE),
-        AxisPosition::Left,
-    );
+    // let mut value_widget =
+    //     widgets::value::ValueWithLabelWidget::<5, 16>::new(slf_sensor.flow_unit());
+    // let mut streaming_chart = widgets::chart::StreamedDataPlot::<350>::new(
+    //     Rgb565::CSS_STEEL_BLUE,
+    //     Some(Rgb565::WHITE),
+    //     AxisPosition::Left,
+    // );
+
+    let mut history = history::History::<350>::new("ms", slf_sensor.flow_unit(), None);
+
+    let mut gui = gui::Ui::new(fbuf.bounding_box(), &sensor_name, style::UiStyle::default());
+    gui.set_flow_unit(slf_sensor.flow_unit());
 
     let experiment_start = Instant::now();
+    log::info!("Starting main loop");
     loop {
         // === Do button handling ===
         button_0.tick();
@@ -238,42 +238,29 @@ fn main() -> ! {
                 let flow: f32 = flow.into();
                 let real_flow = flow / slf_sensor.flow_factor();
 
-                if update_plot {
-                    streaming_chart.push_point(Point2D {
-                        x: (experiment_start.elapsed().as_millis() as f32) / 1000.0,
-                        y: real_flow,
-                    });
-                    value_widget.update_value(real_flow);
-                }
+                history.push(Point2D {
+                    x: (experiment_start.elapsed().as_millis() as f32) / 1000.0,
+                    y: real_flow,
+                });
             }
             Err(err) => log::error!("[mes] {:?}", err),
         }
 
         {
+            let text_str = match state {
+                State::Water => "H2O ",
+                State::Ethanol => "EtOH",
+            };
             // === Create and update the screen ===
             fbuf.clear(Rgb565::WHITE);
+            gui.tick_update(update_plot, text_str);
 
-            // == Header row ===
-            let icon = size18px::actions::DoubleCheck::new(Rgb565::BLACK);
-            let img = Image::new(&icon, Point::new(1, 3));
-            img.draw(&mut fbuf);
-
-            //ui.add_horizontal(Label::new(&sensor_name).with_font(ascii::FONT_10X20));
-            let name_position = Point::new(20, 20); //x= icon width, y= font height
-            let name_style = MonoTextStyle::new(&ascii::FONT_10X20, Rgb565::BLACK);
-            let text = Text::new(&sensor_name, name_position, name_style);
-            text.draw(&mut fbuf);
-
-            let point = Point::new(fbuf.width() as i32 - 20, 3);
             if update_plot {
-                let icon = size18px::music::Play::new(Rgb565::BLACK);
-                let img = Image::new(&icon, point);
-                img.draw(&mut fbuf);
-            } else {
-                let icon = size18px::music::Pause::new(Rgb565::BLACK);
-                let img = Image::new(&icon, point);
-                img.draw(&mut fbuf);
+                gui.chart_update(&history); // Maybe don't copy the whole ringbuffer every tick?
+                let newest = history.get_newest().map(|point| point.y);
+                gui.sensor_value_update(newest);
             };
+            gui.draw(&mut fbuf);
 
             // === Chart row ===
             let chart_allocation = Rectangle::new(
@@ -284,44 +271,44 @@ fn main() -> ! {
                 },
             );
 
-            let _ = streaming_chart.draw_chart(chart_allocation, &mut fbuf);
+            // let _ = streaming_chart.draw_chart(&mut fbuf);
 
             // === Bottom row ===
             let margin = 5;
             let bottom_row = Point::new(0, chart_allocation.bottom_right().unwrap().y + margin);
 
             let mut point = bottom_row;
-            let icon = size18px::navigation::NavArrowLeft::new(Rgb565::BLACK);
-            let img = Image::new(&icon, point);
-            img.draw(&mut fbuf);
-            point.x += 20; //18px + margin
+            // let icon = size18px::navigation::NavArrowLeft::new(Rgb565::BLACK);
+            // let img = Image::new(&icon, point);
+            // img.draw(&mut fbuf);
+            // point.x += 20; //18px + margin
 
-            let text_str = match state {
-                State::Water => {
-                    "H2O "
-                    //ui.add_horizontal(spacer::Spacer::new(Size::new(2*20, 0))); // Creating horizontal space
-                }
-                State::Ethanol => "EtOH",
-            };
-            point.y += 20;
-            let name_style = MonoTextStyle::new(&ascii::FONT_10X20, Rgb565::BLACK);
-            let text = Text::new(&text_str, point, name_style);
-            text.draw(&mut fbuf);
-            point.y -= 20;
-            point.x += text.bounding_box().size.width as i32;
+            // let text_str = match state {
+            //     State::Water => {
+            //         "H2O "
+            //         //ui.add_horizontal(spacer::Spacer::new(Size::new(2*20, 0))); // Creating horizontal space
+            //     }
+            //     State::Ethanol => "EtOH",
+            // };
+            // point.y += 20;
+            // let name_style = MonoTextStyle::new(&ascii::FONT_10X20, Rgb565::BLACK);
+            // let text = Text::new(&text_str, point, name_style);
+            // text.draw(&mut fbuf);
+            // point.y -= 20;
+            // point.x += text.bounding_box().size.width as i32;
 
-            let icon = size18px::navigation::NavArrowRight::new(Rgb565::BLACK);
-            let img = Image::new(&icon, point);
-            img.draw(&mut fbuf);
-            point.x += 20; //18px + margin
+            // let icon = size18px::navigation::NavArrowRight::new(Rgb565::BLACK);
+            // let img = Image::new(&icon, point);
+            // img.draw(&mut fbuf);
+            // point.x += 20; //18px + margin
 
-            value_widget.draw(point, &mut fbuf).unwrap();
+            //value_widget.draw(point, &mut fbuf).unwrap();
 
             display.fill_contiguous(&fbuf.bounding_box(), fbuf.data.iter().cloned());
         }
 
         // === House-keeping
-        i += 1;
+
         // We need to reset the buttons
         button_0.reset();
         button_1.reset();

@@ -1,37 +1,31 @@
 //! A custom chart widget.
 //!
 //! Based on embedded_charts
-use core::marker::PhantomData;
 
-use anyhow::Context;
-use embedded_bitmap_fonts::terminus::FONT_14x28_BOLD;
-use embedded_charts::{
-    chart::AnimatedLineChart,
-    data::{Point2D, StaticDataSeries},
-};
-use embedded_charts::{grid, prelude::*};
-use embedded_graphics::mono_font::{MonoFont, MonoTextStyle};
-use embedded_graphics::{
-    mono_font::{ascii::*, iso_8859_15::FONT_10X20},
-    text::Text,
-};
+use embedded_charts::data::{Point2D, StaticDataSeries};
+use embedded_charts::prelude::*;
 
-pub struct StreamedDataPlot<const N: usize> {
-    stream: StreamingAnimator<Point2D>,
-    serie: StaticDataSeries<Point2D, 256>,
-    //buffer: RingBuffer<Point2D, N>,
-    pub chart: AnimatedLineChart<Rgb565>,
+pub type LineChartData = StaticDataSeries<Point2D, 256>;
+
+pub struct StreamedDataPlot {
+    viewport: embedded_graphics::primitives::Rectangle,
+
+    // stream: StreamingAnimator<Point2D>,
+    // serie: StaticDataSeries<Point2D, 256>,
+    // //buffer: RingBuffer<Point2D, N>,
+    data: LineChartData,
+    chart: LineChart<Rgb565>,
     color: Rgb565,
     plot_background: bool,
     y_axis_side: AxisPosition,
 }
 
-impl<const N: usize> StreamedDataPlot<N> {
+impl StreamedDataPlot {
     pub fn create_chart(
         line_color: Rgb565,
         background_color: Option<Rgb565>,
-    ) -> ChartResult<AnimatedLineChart<Rgb565>> {
-        let chart = AnimatedLineChart::builder()
+    ) -> ChartResult<LineChart<Rgb565>> {
+        let chart = LineChart::builder()
             .line_color(line_color)
             .line_width(2)
             .margins(Margins::new(0, 10, 10, 25)) // Axis gradutation are not part of the plot ( are counted outside)
@@ -53,6 +47,7 @@ impl<const N: usize> StreamedDataPlot<N> {
         line_color: Rgb565,
         background_color: Option<Rgb565>,
         y_axis_side: AxisPosition,
+        viewport: embedded_graphics::primitives::Rectangle,
     ) -> Self {
         // Create X-axis (horizontal, bottom) with calculated range
         // let y_axis = LinearAxisBuilder::new(AxisOrientation::Vertical, AxisPosition::Left)
@@ -65,20 +60,14 @@ impl<const N: usize> StreamedDataPlot<N> {
         //     .show_grid(true)
         //     .build()?;
         let chart = Self::create_chart(line_color, background_color).unwrap();
-        let stream = StreamingAnimator::<Point2D>::new();
         Self {
-            stream,
-            serie: StaticDataSeries::<Point2D, 256>::new(),
             plot_background: background_color.is_some(),
             y_axis_side,
             chart,
             color: line_color,
+            viewport,
+            data: LineChartData::new(),
         }
-    }
-
-    pub fn push_point(&mut self, point: Point2D) {
-        //self.stream.update_with_delta(16) ;
-        self.stream.push_data(point);
     }
 
     // pub fn set_background_color(&mut self, background_color: Option<Rgb565>) {
@@ -87,23 +76,14 @@ impl<const N: usize> StreamedDataPlot<N> {
     //     self.chart.set_config(config);
     // }
 
-    fn auto_range_axis(&mut self) -> anyhow::Result<()> {
-        let bounds = self
-            .serie
-            .bounds()
-            .map_err(|err| anyhow::anyhow!("{}", err))
-            .context("Retreiving bounds of Dataserie")?;
-            //.nice_bounds();
-
+    fn configure_axis(&mut self, bounds: DataBounds<f32, f32>) -> Result<(), ChartError> {
         let x_axis = presets::professional_x_axis(bounds.min_x, bounds.max_x)
             .show_grid(self.plot_background)
             .show_labels(self.plot_background)
             .show_line(self.plot_background)
             .show_ticks(self.plot_background)
-            .build()
-            .map_err(|err| anyhow::anyhow!("{}", err))
-            .context("Building x axis")?;
-        self.chart.base_chart_mut().set_x_axis(x_axis);
+            .build()?;
+        self.chart.set_x_axis(x_axis);
 
         let axis_style = AxisStyle::new()
             .with_axis_line(LineStyle::solid(self.color))
@@ -124,32 +104,31 @@ impl<const N: usize> StreamedDataPlot<N> {
             .show_grid(self.y_axis_side != AxisPosition::Right)
             .with_minor_ticks(4)
             .style(axis_style)
-            .build()
-            .map_err(|err| anyhow::anyhow!("{}", err))
-            .context("Building y axis")?;
-        self.chart.base_chart_mut().set_y_axis(y_axis);
+            .build()?;
+        self.chart.set_y_axis(y_axis);
 
         Ok(())
     }
 
+    pub fn update_data<const N: usize>(&mut self, new_data: &crate::history::History<N>) {
+        self.data = new_data.clone_latest_data();
+
+        let bounds = self.data.bounds().unwrap_or(DataBounds {
+            min_x: -1.0,
+            max_x: 1.0,
+            min_y: -1.0,
+            max_y: 1.0,
+        });
+        if let Err(err) = self.configure_axis(bounds) {
+            log::warn!("Failed to configure chart axis: {}", err);
+        };
+    }
+
     pub fn draw_chart<T: DrawTarget<Color = Rgb565>>(
         &mut self,
-        viewport: embedded_graphics::primitives::Rectangle,
         display: &mut T,
     ) -> ChartResult<()> {
-        self.serie.clear();
-        for point in self.stream.current_data() {
-            let _ = self.serie.push(point);
-        }
-
-        if let Err(err) = self
-            .auto_range_axis()
-            .context("Trying to update the axis with the bounds of the datasets")
-        {
-            log::warn!("{:#}", err)
-        };
-
         self.chart
-            .draw(&self.serie, self.chart.config(), viewport, display)
+            .draw(&self.data, self.chart.config(), self.viewport, display)
     }
 }

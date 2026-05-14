@@ -1,6 +1,7 @@
 //! A widget to display a value with a label, and an optional unit.
 //!
 //! Custom widget, uses the embedded_bitmap_fonts crate to display some big numbers
+use anyhow::Context;
 use core::fmt::Write;
 use embedded_bitmap_fonts::terminus::FONT_8x14_BOLD;
 use embedded_charts::prelude::*;
@@ -8,43 +9,53 @@ use embedded_graphics::text::{Baseline, Text};
 
 use crate::utils::color_converter::BinaryToRgb565;
 
-pub struct ValueWithLabelWidget<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize> {
-    pub value_str: String<VARIABLE_CHARS>,
-    label_str: String<CONSTANT_CHARS>,
-    const_already_drawn: bool,
+pub struct ValueIndicatorWidget<const VALUE_STR_SIZE: usize, const LABEL_STR_SIZE: usize> {
+    position: Point,
+    value_str: String<VALUE_STR_SIZE>,
+    label_str: String<LABEL_STR_SIZE>,
 }
 
-impl<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize>
-    ValueWithLabelWidget<VARIABLE_CHARS, CONSTANT_CHARS>
+impl<const VALUE_STR_SIZE: usize, const LABEL_STR_SIZE: usize>
+    ValueIndicatorWidget<VALUE_STR_SIZE, LABEL_STR_SIZE>
 {
-    pub fn new(label: &str) -> Self {
-        let value_str = String::<VARIABLE_CHARS>::new();
-        let mut label_str = String::<CONSTANT_CHARS>::new();
+    pub fn new(position: Point, label: &str, background_color: Rgb565, text_color: Rgb565) -> Self {
+        let mut label_str = String::new();
         if label_str.push_str(label).is_err() {
             log::warn!(
                 "Error - Trying to push {} into String with {} chars )",
                 label,
-                CONSTANT_CHARS
+                16
             );
         }
-
         Self {
-            value_str,
+            position,
+            value_str: String::new(),
             label_str,
-            const_already_drawn: false,
         }
     }
 
-    pub fn update_value(&mut self, value: f32) {
-        //TODO: make this smarter
-        self.value_str.clear();
-        match write!(&mut self.value_str, "{:05.1}", value) {
-            Ok(_) => (),
-            Err(err) => log::warn!("{} (value: {})", err, value),
-        };
+    pub fn set_label(&mut self, label: &str) {
+        self.label_str.clear();
+        if self.label_str.push_str(label).is_err() {
+            log::warn!(
+                "Error - Trying to push {} into String with {} chars )",
+                label,
+                LABEL_STR_SIZE
+            );
+        }
     }
 
-    pub fn draw<T>(&mut self, start_point: Point, display: &mut T) -> RenderResult<()>
+    pub fn update_value(&mut self, value: Option<f32>) -> anyhow::Result<()> {
+        //TODO: make this smarter
+        self.value_str.clear();
+        match value {
+            Some(value) => write!(&mut self.value_str, "{:05.1}", value),
+            None => write!(&mut self.value_str, "---.-"),
+        }
+        .context("Trying to write a new value into the widget's string")
+    }
+
+    pub fn draw<T>(&self, target: &mut T) -> Result<(), <T>::Error>
     where
         T: DrawTarget<Color = Rgb565> + embedded_graphics::geometry::OriginDimensions,
     {
@@ -53,7 +64,7 @@ impl<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize>
 
         let mut style = TextStyle::new(&larger_font, BinaryColor::On);
 
-        let mut point = start_point;
+        let mut point = self.position;
         point.y -= 7; // Same as line 63
 
         //self.flow_text.draw(point, &style, display)?;
@@ -71,11 +82,11 @@ impl<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize>
             embedded_graphics::geometry::AnchorY::Top,
         );
 
-        display.fill_solid(&background, Rgb565::BLACK);
+        target.fill_solid(&background, Rgb565::BLACK);
 
         // Convert from Binary to some colours
         let mut adapter = BinaryToRgb565::new(
-            display,
+            target,
             Rgb565::RED, // ON color
             None,        // OFF = transparent (recommended)
         );
@@ -97,4 +108,3 @@ impl<const VARIABLE_CHARS: usize, const CONSTANT_CHARS: usize>
         Ok(())
     }
 }
-

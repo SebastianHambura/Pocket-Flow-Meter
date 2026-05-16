@@ -1,0 +1,51 @@
+name: Build and Release ESP Firmware
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install espflash
+        run: cargo install espflash
+
+      - name: Add ESP target
+        run: rustup target add xtensa-esp32s3-none-elf
+
+      # Optional: cache cargo builds
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build merged firmware image
+        run: |
+          cargo espflash save-image \
+            --chip esp32s3 \
+            --bin flow-meter \
+            --release \
+            firmware.bin \
+            --merge
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: firmware.bin
+          generate_release_notes: true

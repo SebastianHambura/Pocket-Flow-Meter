@@ -26,6 +26,9 @@ jobs:
           ldproxy: true
           buildtargets: esp32s3
 
+      - name: Install espflash
+        run: cargo install espflash --locked
+
 
       # Optional: cache cargo builds
       - name: Cache cargo registry

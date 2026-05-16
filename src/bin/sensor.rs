@@ -59,7 +59,7 @@ where
     Sensor: sensirion_SLF::SensorCommunication,
 {
     if let Err(err) = sensor.stop_measurement() {
-        log::warn!("Problem stopping measurmenent: {err:?}")
+        log::warn!("Problem stopping measurement: {err:?}")
     };
     Delay::new().delay_micros(600);
     //delay.delay_micros(600);
@@ -67,7 +67,7 @@ where
         State::Water => sensor.start_continuous_measurement_water(),
         State::Ethanol => sensor.start_continuous_measurement_alcohol(),
     } {
-        log::warn!("Problem stopping measurmenent: {err:?}")
+        log::warn!("Problem starting measurement: {err:?}")
     };
     log::info!("Switched to {state:?} mode");
 }

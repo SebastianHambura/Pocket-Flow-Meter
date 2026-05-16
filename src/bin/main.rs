@@ -76,12 +76,13 @@ fn main() -> ! {
     utils::fill_string(&mut sensor_name, ' ');
 
     // === Init UI state ===
+    // we use the screen horizontally
     let mut fbuf = embedded_graphics_framebuf::FrameBuf::new(
         [Rgb565::WHITE; lilygo_hal::DISPLAY_PIXEL_COUNT],
-        lilygo_hal::lilygo_display_config::WIDTH as usize,
         lilygo_hal::lilygo_display_config::HEIGHT as usize,
+        lilygo_hal::lilygo_display_config::WIDTH as usize,
     );
-    
+
     let mut gui = gui::Ui::new(fbuf.bounding_box(), &sensor_name, style::UiStyle::default());
     gui.set_flow_unit(slf_sensor.flow_unit());
     let mut update_plot = true;
@@ -107,7 +108,7 @@ fn main() -> ! {
         // === Handle sensor logic ===
         let measure = slf_sensor.read_measurement();
         match measure {
-            Ok((flow, temp, signal)) => {
+            Ok((flow, _temp, _signal)) => {
                 // Convert raw value into the proper physical unit
                 let flow: f32 = flow.into();
                 let real_flow = flow / slf_sensor.flow_factor();

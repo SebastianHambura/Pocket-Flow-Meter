@@ -69,6 +69,7 @@ impl<'a> Ui<'a, Rgb565> {
             chart_allocation.bottom_right().unwrap().y_axis(),
             None,
             text_style,
+            3
         );
         let value_widget = crate::widgets::value::ValueIndicatorWidget::new(
             chart_allocation.bottom_right().unwrap().y_axis() + Point::new(100, 0),

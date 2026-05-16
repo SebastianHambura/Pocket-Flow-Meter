@@ -19,6 +19,10 @@ where
         let icon = T::new(color);
         Self { icon, position }
     }
+
+    pub fn set_position(&mut self, position: Point) {
+        self.position = position;
+    }
 }
 
 impl<C, T> Drawable for DrawableIcon<C, T>
@@ -40,6 +44,12 @@ where
 }
 
 /// A blinking icon that can switch between two icons based on a boolean value.
+/// 
+/// The blinking behavior is achieved by changing the color of icons periodically, 
+/// changing between the provided color and the other color (which is usually the background color, to create a blinking effect).
+/// The update method should be called periodically with the current value of the switch, and it will handle the blinking behavior internally.
+/// 
+/// Which icon is displayed will switch between the two provided icons based on the value of the switch.
 pub struct BlinkingSwitchIcon<C, IconIfTrue, IconIfFalse>
 where
     C: PixelColor,
@@ -64,6 +74,7 @@ where
     IconIfTrue: embedded_iconoir::prelude::IconoirIcon,
     IconIfFalse: embedded_iconoir::prelude::IconoirIcon,
 {
+
     pub fn new(
         color_on: C,
         color_off: C,

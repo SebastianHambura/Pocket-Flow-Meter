@@ -13,6 +13,9 @@ pub struct ValueIndicatorWidget<const VALUE_STR_SIZE: usize, const LABEL_STR_SIZ
     position: Point,
     value_str: String<VALUE_STR_SIZE>,
     label_str: String<LABEL_STR_SIZE>,
+
+    background_color: Rgb565,
+    text_color: Rgb565,
 }
 
 impl<const VALUE_STR_SIZE: usize, const LABEL_STR_SIZE: usize>
@@ -22,15 +25,17 @@ impl<const VALUE_STR_SIZE: usize, const LABEL_STR_SIZE: usize>
         let mut label_str = String::new();
         if label_str.push_str(label).is_err() {
             log::warn!(
-                "Error - Trying to push {} into String with {} chars )",
+                "Error - Trying to push {} into String with {} chars",
                 label,
-                16
+                LABEL_STR_SIZE
             );
         }
         Self {
             position,
             value_str: String::new(),
             label_str,
+            background_color,
+            text_color
         }
     }
 
@@ -62,32 +67,34 @@ impl<const VALUE_STR_SIZE: usize, const LABEL_STR_SIZE: usize>
         use embedded_bitmap_fonts::{terminus::FONT_14x28_BOLD, TextStyle};
         let larger_font = FONT_14x28_BOLD.pixel_double();
 
-        let mut style = TextStyle::new(&larger_font, BinaryColor::On);
+        let style = TextStyle::new(&larger_font, BinaryColor::On);
 
         let mut point = self.position;
-        point.y -= 7; // Same as line 63
+        let top_y_offset = 7 ;
+        let bottom_y_offset = 11; 
+        point.y -= top_y_offset; // Same as line 63
 
         //self.flow_text.draw(point, &style, display)?;
-        let mut value_text = Text::with_baseline(&self.value_str, point, style, Baseline::Top);
+        let value_text = Text::with_baseline(&self.value_str, point, style, Baseline::Top);
 
-        // Paint the background
+        // == Paint the background ==
         let mut background = value_text.bounding_box();
         // These values are probably FONT and FONT size dependent
         background = background.resized_height(
-            background.size.height - 7,
+            background.size.height.saturating_sub(top_y_offset as u32),
             embedded_graphics::geometry::AnchorY::Bottom,
         );
         background = background.resized_height(
-            background.size.height - 11,
+            background.size.height.saturating_sub(bottom_y_offset as u32),
             embedded_graphics::geometry::AnchorY::Top,
         );
 
-        target.fill_solid(&background, Rgb565::BLACK);
+        target.fill_solid(&background, self.background_color);
 
-        // Convert from Binary to some colours
+        // === Convert from Binary to some colours === 
         let mut adapter = BinaryToRgb565::new(
             target,
-            Rgb565::RED, // ON color
+            self.text_color, // ON color
             None,        // OFF = transparent (recommended)
         );
         //log::info!("Drawing value '{}' at {:?}", self.value_str, point);

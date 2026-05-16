@@ -28,7 +28,7 @@ impl StreamedDataPlot {
         let chart = LineChart::builder()
             .line_color(line_color)
             .line_width(2)
-            .margins(Margins::new(0, 10, 10, 25)) // Axis gradutation are not part of the plot ( are counted outside)
+            .margins(Margins::new(0, 10, 10, 25)) // Axis graduation are not part of the plot ( are counted outside)
             .with_markers(MarkerStyle {
                 shape: MarkerShape::Circle,
                 size: 4,

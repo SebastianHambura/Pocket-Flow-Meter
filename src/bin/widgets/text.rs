@@ -15,9 +15,8 @@ where
     C: PixelColor,
 {
     pub fn new(position: Point, text: &'a str, text_style: MonoTextStyle<'static, C>) -> Self {
-        let c_height = text_style.font.character_size.height as i32;
         Self {
-            position: position + Point::new(0, c_height),
+            position,
             text,
             text_style,
         }
@@ -25,6 +24,10 @@ where
 
     pub fn update_text(&mut self, new_text: &'a str) {
         self.text = new_text;
+    }
+
+    pub fn get_text(&self) -> &'a str {
+        self.text
     }
 }
 
@@ -39,9 +42,14 @@ where
     fn draw<T>(&self, target: &mut T) -> Result<(), <T>::Error>
     where
         T: DrawTarget<Color = C>,
-    {    
-        let text = Text::new(self.text, self.position , self.text_style);
-        text.draw(target)?; 
+    {
+        let text = Text::with_baseline(
+            self.text,
+            self.position,
+            self.text_style,
+            embedded_graphics::text::Baseline::Top,
+        );
+        text.draw(target)?;
         Ok(())
     }
 }

@@ -7,6 +7,8 @@ pub struct Menu<'a, C: PixelColor> {
     left_arrow: crate::widgets::icons::DrawableIcon<C, size18px::navigation::NavArrowLeft>,
     right_arrow: crate::widgets::icons::DrawableIcon<C, size18px::navigation::NavArrowRight>,
     text_widget: crate::widgets::text::DrawableText<'a, C>,
+
+    margin: i32,
 }
 
 impl<'a, C: PixelColor> Menu<'a, C> {
@@ -15,8 +17,8 @@ impl<'a, C: PixelColor> Menu<'a, C> {
         position: Point,
         current_menu: Option<&'a str>,
         text_style: MonoTextStyle<'static, C>,
+        margin: i32
     ) -> Self {
-        let margin = 3;
         let left_arrow =
             crate::widgets::icons::DrawableIcon::new(color, position + Point::new(0, 3));
 
@@ -26,21 +28,25 @@ impl<'a, C: PixelColor> Menu<'a, C> {
             text_style,
         );
 
+        let x_offset= 18 + margin + text_widget.get_text().len() as i32 * 10 + margin; // TODO: calculate this based on the screen width and the text length
         let right_arrow = crate::widgets::icons::DrawableIcon::new(
             color,
-            position + Point::new(18 + margin + 4 * 10 + margin, 3),
-        ); // TODO: calculate this based on the screen width
+            position + Point::new(x_offset, 3),
+        );
 
         Self {
             position,
             left_arrow,
             right_arrow,
             text_widget,
+            margin
         }
     }
 
     pub fn update_menu(&mut self, new_menu: &'a str) {
         self.text_widget.update_text(new_menu);
+        let x_offset= 18 + self.margin + self.text_widget.get_text().len() as i32 * 10 + self.margin; // TODO: calculate this based on the screen width and the text length
+        self.right_arrow.set_position(self.position + Point::new(x_offset, 3));
     }
 }
 

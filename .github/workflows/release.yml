@@ -38,12 +38,14 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build merged firmware image
+      - name: Build firmware
+        run: cargo build --release
+        
+      - name: Espflash save-image
         run: |
           espflash save-image \
             --chip esp32s3 \
-            --bin flow-meter \
-            --release \
+            target/xtensa-esp32s3-none-elf/release/flow-meter \
             firmware.bin \
             --merge
 

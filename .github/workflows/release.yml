@@ -28,7 +28,6 @@ jobs:
       - name: Install espflash
         run: cargo install espflash --locked
 
-
       # Optional: cache cargo builds
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -41,7 +40,7 @@ jobs:
 
       - name: Build merged firmware image
         run: |
-          cargo espflash save-image \
+          espflash save-image \
             --chip esp32s3 \
             --bin flow-meter \
             --release \

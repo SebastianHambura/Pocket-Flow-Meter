@@ -1,6 +1,7 @@
 name: Build and Release ESP Firmware
 
 on:
+  workflow_dispatch:   # 👈 manual "Run workflow" button
   push:
     tags:
       - "v*"
@@ -47,7 +48,8 @@ jobs:
             firmware.bin \
             --merge
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (only on tags)
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: firmware.bin

@@ -1,75 +1,73 @@
-use core::option::Option;
-use core::option::Option::*;
-use core::result::Result::*;
-use embedded_charts::data::Point2D;
+//! This module contains everything related to the sensor, such as the auto-detection of the sensor and the communication with it.
+
+use esp_hal::delay::Delay;
 use esp_hal::i2c::master::I2c;
-use micromath::F32Ext;
-use sensirion_SLF::Sensor;
+use sensirion_SLF::models::SLF3S_0600F;
+use sensirion_SLF::slf3_driver::Slf3sDriver;
+use sensirion_SLF::{SensorCommunication, SensorDriver};
 
 type BlockingI2C = I2c<'static, esp_hal::Blocking>;
-pub struct SensorWrapper {
-    sensor: sensirion_SLF::slf3::SLF3S<BlockingI2C>,
-    do_measurements: bool
 
+pub fn auto_detect_sensor(
+    i2c: BlockingI2C,
+) -> Result<SensorDriver<BlockingI2C>, (BlockingI2C, anyhow::Error)> {
+    let mut slf_sensor: Slf3sDriver<_, SLF3S_0600F> =
+        sensirion_SLF::slf3_driver::Slf3sDriver::new(i2c);
+
+    if let Err(err) = slf_sensor.soft_reset() {
+        log::error!("Soft reset: {err}");
+        return Err((slf_sensor.into_inner(), err));
+    };
+
+    Delay::new().delay_millis(50);
+
+    match slf_sensor.read_product_id() {
+        Ok((id, serial_number)) => {
+            log::info!("Connected to sensor {serial_number}");
+            let i2c = slf_sensor.into_inner();
+            Ok(SensorDriver::new(i2c, id))
+        }
+        Err(err) => Err((slf_sensor.into_inner(), err)),
+    }
 }
+
 
 #[derive(Debug)]
-pub struct Measurement {
-    pub flow: Point2D,
-    pub temp: Point2D, 
+pub enum State {
+    Water,
+    Ethanol,
 }
 
-impl Measurement {
-    pub fn new(timestamp: f32, flow: f32, temp: f32) -> Self {
-        Self { flow: Point2D::new(timestamp, flow), temp: Point2D::new(timestamp, temp) }
+impl State {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            State::Water => State::Ethanol,
+            State::Ethanol => State::Water,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            State::Water => "H2O",
+            State::Ethanol => "EtOH",
+        }
     }
 }
 
-
-impl SensorWrapper {
-    pub fn new(mut i2c: BlockingI2C) -> Self {
-        Self {
-            sensor: sensirion_SLF::slf3::SLF3S::new(i2c),
-            do_measurements: false,
-            
-        }
-    }
-
-    pub fn get_ID(&mut self) -> Option<u32> {
-        match self.sensor.read_product_id() {
-            Ok(id) => Some(id.0.raw_value()),
-            Err(err) => {
-                log::error!("{:?}", err);
-                None
-            }
-        }
-    }
-
-    pub fn swap_measurement(&mut self) -> anyhow::Result<()> {
-        match self.do_measurements {
-            true => {
-                self.sensor.stop_measurement()
-            },
-            false => {
-                self.sensor.start_continuous_measurement_water()
-            },
-        }
-    }
-
-    pub fn get_measurement(&mut self, i: f32) -> Option<Measurement> {
-        match self.sensor.read_measurement() {
-            Ok((flow, temp, signal)) => {
-                Some(
-                    Measurement::new(i, flow.into(), temp.into())
-                )
-            },
-            Err(err) =>{
-                log::error!("{:?}", err);
-                None
-            }
-        }
-        // let timestamp = i * 0.1;
-        // let value = 50.0 + 20.0 * (timestamp * 0.5).sin();
-        // Measurement::new(timestamp, value)
-    }
+pub fn set_sensor_state<Sensor>(sensor: &mut Sensor, state: &State)
+where
+    Sensor: sensirion_SLF::SensorCommunication,
+{
+    if let Err(err) = sensor.stop_measurement() {
+        log::warn!("Problem stopping measurement: {err:?}")
+    };
+    Delay::new().delay_micros(600);
+    //delay.delay_micros(600);
+    if let Err(err) = match state {
+        State::Water => sensor.start_continuous_measurement_water(),
+        State::Ethanol => sensor.start_continuous_measurement_alcohol(),
+    } {
+        log::warn!("Problem starting measurement: {err:?}")
+    };
+    log::info!("Switched to {state:?} mode");
 }

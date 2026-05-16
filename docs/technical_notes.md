@@ -17,3 +17,8 @@ Other interesting tutorials:
 - https://github.com/georgik/esp32-rust-lilygo-t5-epaper 
 
 Simulation using Wokwi ?
+
+Memo to myself: to generate a independent image that contains everything that you can flash on the device at adress 0x0, run :
+```
+cargo espflash save-image --chip esp32s3 --bin flow-meter --release firmware.bin --merge
+```

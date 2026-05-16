@@ -1,8 +1,13 @@
+//! Hardware Abstraction Layer for the LilyGo T-Display-S3
+//! 
+//! Converts the low level hardware interfaces (GPIO, I2C) into higher level abstractions (Display, Button, I2C)
+//!  that can be used in the main application logic without worrying about the underlying hardware details.
+use button_driver::{ButtonConfig, InstantProvider};
 use esp_hal::{
     delay::Delay,
     gpio::{InputConfig, OutputConfig},
     i2c::master::I2c,
-    time::Rate,
+    time::{Instant, Rate},
 };
 use mipidsi::{
     interface::{Generic8BitBus, ParallelInterface},
@@ -11,9 +16,8 @@ use mipidsi::{
     Builder,
 };
 
+// Some type aliases to make the code more readable outside the hal module
 pub type PinOut = esp_hal::gpio::Output<'static>;
-pub type PinIn = esp_hal::gpio::Input<'static>;
-
 pub type Display = mipidsi::Display<
     mipidsi::interface::ParallelInterface<
         mipidsi::interface::Generic8BitBus<
@@ -32,6 +36,7 @@ pub type Display = mipidsi::Display<
     mipidsi::models::ST7789,
     PinOut,
 >;
+pub type Button = button_driver::Button<GPIODriver, WrappedInstant>;
 
 pub mod lilygo_display_config {
     use mipidsi::options::{Orientation, Rotation};
@@ -51,7 +56,7 @@ pub const DISPLAY_PIXEL_COUNT: usize =
 
 pub fn setup(
     peripherals: esp_hal::peripherals::Peripherals,
-) -> (Display, (PinIn, PinIn), I2c<'static, esp_hal::Blocking>) {
+) -> (Display, (Button, Button), I2c<'static, esp_hal::Blocking>) {
     // == DISPLAY SETUP ==
     let display = {
         let lcd_out_config = OutputConfig::default();
@@ -148,6 +153,7 @@ pub fn setup(
         )
     };
     // == BUTTON SETUP ==
+    let config = ButtonConfig::default();
     let (button_0, button_1) = {
         let input_config = InputConfig::default().with_pull(esp_hal::gpio::Pull::Up);
         (
@@ -155,6 +161,10 @@ pub fn setup(
             esp_hal::gpio::Input::new(peripherals.GPIO14, input_config),
         )
     };
+    let button_0: button_driver::Button<_, WrappedInstant> =
+        button_driver::Button::new(GPIODriver { pin: button_0 }, config);
+    let button_1: button_driver::Button<_, WrappedInstant> =
+        button_driver::Button::new(GPIODriver { pin: button_1 }, config);
 
     // == I2C SETUP ==
     let config = esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(100));
@@ -162,8 +172,8 @@ pub fn setup(
     // You need to configure the driver during initialization:
     let i2c = I2c::new(peripherals.I2C0, config)
         .unwrap() //TODO: handle error - return Result
-        .with_sda(peripherals.GPIO16)
-        .with_scl(peripherals.GPIO21);
+        .with_sda(peripherals.GPIO43)
+        .with_scl(peripherals.GPIO44);
 
     // Return the items
     (display, (button_0, button_1), i2c)
@@ -197,7 +207,7 @@ fn lcd_display_setup(
     child_select.set_low();
     let bus = Generic8BitBus::new(data);
     let di = ParallelInterface::new(bus, dc, wr);
-    
+
     let mut delay = Delay::new();
 
     // inspired by https://github.com/almindor/mipidsi/blob/master/examples/spi-st7789-rpi-zero-w/src/main.rs
@@ -219,6 +229,77 @@ fn lcd_display_setup(
         Err(err) => {
             log::error!("Display initialization error: {:?}", err);
             panic!("Impossible to initialize display");
+        }
+    }
+}
+
+// == GPIO WRAPPER FOR BUTTONS ==
+pub struct GPIODriver {
+    pin: esp_hal::gpio::Input<'static>,
+}
+
+impl button_driver::PinWrapper for GPIODriver {
+    fn is_high(&mut self) -> bool {
+        self.pin.is_high()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WrappedInstant {
+    instant: Instant,
+}
+
+impl InstantProvider<core::time::Duration> for WrappedInstant {
+    fn now() -> Self {
+        Self {
+            instant: Instant::now(),
+        }
+    }
+}
+
+impl core::ops::Sub for WrappedInstant {
+    type Output = core::time::Duration;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let ms = (self.instant - rhs.instant).as_micros();
+        core::time::Duration::from_micros(ms)
+    }
+}
+
+mod tests {
+    use super::*;
+    use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
+    use sensirion_SLF::SensorCommunication;
+    fn _test_display(display: &mut Display) {
+        log::debug!("Starting test of display");
+        let delay = Delay::new();
+        display.clear(Rgb565::RED).unwrap();
+        delay.delay_millis(300u32);
+        log::info!("Starting test images");
+        mipidsi::TestImage::new().draw(display).unwrap();
+    }
+
+    fn _test_i2c(i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>) {
+        let mut sensor: sensirion_SLF::slf3_driver::Slf3sDriver<
+            _,
+            sensirion_SLF::models::SLF3S_0600F,
+        > = sensirion_SLF::slf3_driver::Slf3sDriver::new(i2c);
+
+        //sensor. ;
+        const DEVICE_ADDR: u8 = 0x77;
+        //let write_buffer = [0xAA];
+        //let mut read_buffer = [0u8; 22];
+        let delay = Delay::new();
+        loop {
+            log::info!("Sending I2C command");
+
+            match sensor.read_product_id() {
+                Ok((product_number, serial_number)) => {
+                    log::info!("PN: {product_number:?}, SN: {serial_number:x}")
+                }
+                Err(e) => log::error!("I2C write error: {e:?}"),
+            }
+            delay.delay_millis(500);
         }
     }
 }

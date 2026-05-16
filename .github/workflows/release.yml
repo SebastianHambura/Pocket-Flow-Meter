@@ -17,17 +17,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@v3
+      - name: Install Rust for Xtensa
+        uses: esp-rs/xtensa-toolchain@v1.5
         with:
-          toolchain: esp
-          targets: xtensa-esp32s3-none-elf
-      
-      - name: Install espflash
-        run: cargo install espflash
+          default: true
+          version: "1.66.0"
+          ldproxy: true
+          buildtargets: esp32s3
 
-      - name: Add ESP target
-        run: rustup target add xtensa-esp32s3-none-elf
 
       # Optional: cache cargo builds
       - name: Cache cargo registry

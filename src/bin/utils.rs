@@ -1,4 +1,4 @@
-
+//! This module contains utility functions and types used across the project, such as color conversion, data formatting, etc.
 
 pub mod color_converter {
     use embedded_graphics::prelude::* ;
@@ -49,4 +49,12 @@ where
     }
 }
 
+}
+
+pub fn fill_string<const N: usize>(str: &mut embedded_charts::heapless::String<N>, c: char) {
+    let n = str.len();
+    let missing_char = N - n;
+    for _ in 0..missing_char {
+        let _ = str.push(c);
+    }
 }

@@ -1,3 +1,4 @@
+//! This module contains everything related to the styling of the UI, such as colors and fonts.
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 
 pub struct UiStyle {

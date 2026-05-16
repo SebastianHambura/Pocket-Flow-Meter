@@ -1,3 +1,11 @@
+//! A simple history struct to store recent data points for charting purposes.
+//! 
+//! This is a simple wrapper around the [SlidingWindowSeries] from embedded_charts, with some additional metadata like axis units and an optional label. 
+//! The main reason for this wrapper is to provide a convenient way to store and manage the history of sensor readings, 
+//! which can then be easily converted to a [StaticDataSeries] for charting purposes.
+//! 
+//! Eventually, this could be changed to support multiples series (e.g. temperature ?)
+//! or to also allow exporting the data in a more raw format (e.g. for logging purposes).
 use embedded_charts::prelude::*;
 
 pub struct History<const N: usize> {

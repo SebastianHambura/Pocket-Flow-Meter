@@ -1,8 +1,9 @@
+//! This module contains the main UI struct and its associated methods for managing the state of the UI and drawing it to the display.
+
 use embedded_charts::prelude::*;
 use embedded_graphics::{
     mono_font::{ascii, MonoTextStyle},
     pixelcolor::Rgb565,
-    prelude::*,
     primitives::Rectangle,
 };
 use embedded_iconoir::size18px;
@@ -13,6 +14,8 @@ use crate::{
 };
 
 pub struct Ui<'a, C: PixelColor> {
+    style: UiStyle,
+
     // === Header widgets ===
     connection_status: crate::widgets::icons::DrawableIcon<C, size18px::actions::DoubleCheck>,
     sensor_name: crate::widgets::text::DrawableText<'a, C>,
@@ -75,6 +78,7 @@ impl<'a> Ui<'a, Rgb565> {
         );
 
         Self {
+            style,
             connection_status,
             blinking_icon,
             sensor_name,
@@ -101,7 +105,6 @@ impl<'a> Ui<'a, Rgb565> {
     }
 
     pub fn chart_update<const N: usize>(&mut self, new_data: &crate::history::History<N>) {
-        log::info!("Updating chart with {} new data points", new_data.len());
         self.chart.update_data(new_data);
     }
 
@@ -109,6 +112,7 @@ impl<'a> Ui<'a, Rgb565> {
     where
         D: DrawTarget<Color = Rgb565> + embedded_graphics::geometry::OriginDimensions,
     {
+        display.clear(self.style.background_color)?;
         self.connection_status.draw(display)?;
         self.sensor_name.draw(display)?;
         self.blinking_icon.draw(display)?;
